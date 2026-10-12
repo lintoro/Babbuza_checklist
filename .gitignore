@@ -1,0 +1,30 @@
+# 機敏與環境變數檔案
+.env
+.env.local
+
+# Clasp 憑證與設定檔 (含使用者授權 token)
+.clasp.json
+.clasprc.json
+
+# 依賴套件與輸出
+node_modules/
+dist/
+build/
+
+# 系統與編輯器暫存
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+
+# 臨時分析與過渡資料檔
+*.tmp
+*.temp
+database/*.csv
+database/*.xlsx
+database/*.xls
+database/build_db_v5.py
+database/raw/
+gas/InitDatabase.js

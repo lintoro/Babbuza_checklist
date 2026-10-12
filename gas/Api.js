@@ -1,0 +1,143 @@
+/**
+ * Babbuza Checklist - API 統一路由進入點 (Api.js)
+ */
+
+function doGet(e) {
+  try {
+    const params = (e && e.parameter) || {};
+    const action = params.action || 'status';
+
+    switch (action) {
+      case 'status':
+      case 'ping': {
+        const ss = Utils.getSpreadsheet();
+        return Utils.jsonResponse({
+          status: 'UP',
+          appName: 'Babbuza Checklist App',
+          spreadsheet: ss.getName(),
+          time: Utils.formatDateTime()
+        });
+      }
+
+      case 'get_user_depts': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, auth.error);
+        }
+        const depts = Checklist.getUserDepartments(auth.user.userId, auth.user.role);
+        return Utils.jsonResponse({
+          user: auth.user,
+          departments: depts
+        });
+      }
+
+      case 'get_checklist': {
+        const deptId = params.deptId;
+        const stage = params.stage || 'OPEN';
+        const date = params.date || Utils.formatDate();
+
+        if (!deptId) {
+          return Utils.jsonResponse(null, false, '缺少 deptId 參數');
+        }
+
+        const items = Checklist.getChecklistItems(deptId, stage, date);
+        const status = Checklist.getDepartmentStatus(deptId, date);
+
+        return Utils.jsonResponse({
+          deptId: deptId,
+          stage: stage,
+          date: date,
+          count: items.length,
+          status: status,
+          items: items
+        });
+      }
+
+      case 'get_dept_status': {
+        const deptId = params.deptId;
+        const date = params.date || Utils.formatDate();
+        if (!deptId) {
+          return Utils.jsonResponse(null, false, '缺少 deptId 參數');
+        }
+        const status = Checklist.getDepartmentStatus(deptId, date);
+        return Utils.jsonResponse(status);
+      }
+
+      case 'get_handover': {
+        const deptId = params.deptId;
+        if (!deptId) {
+          return Utils.jsonResponse(null, false, '缺少 deptId 參數');
+        }
+        const notes = Handover.getNotes(deptId);
+        return Utils.jsonResponse({
+          deptId: deptId,
+          notes: notes
+        });
+      }
+
+      default:
+        return Utils.jsonResponse(null, false, '不支援的 GET Action: ' + action);
+    }
+  } catch (err) {
+    return Utils.jsonResponse(null, false, err.toString());
+  }
+}
+
+function doPost(e) {
+  try {
+    let body = {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        body = JSON.parse(e.postData.contents);
+      } catch (ex) {
+        body = e.parameter || {};
+      }
+    } else if (e && e.parameter) {
+      body = e.parameter;
+    }
+
+    const action = body.action || '';
+
+    // 1. 公開/無需 Token 的動作
+    if (action === 'login') {
+      const res = Auth.login(body.userId, body.password);
+      return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+    }
+
+    // 2. 需要 Token 驗證的動作
+    const token = body.token || (e.parameter && e.parameter.token);
+    const auth = Utils.validateToken(token);
+    if (!auth.valid) {
+      return Utils.jsonResponse(null, false, '身份驗證失敗: ' + auth.error);
+    }
+    const currentUser = auth.user;
+
+    switch (action) {
+      case 'change_password': {
+        const res = Auth.changePassword(body.userId, body.oldPassword, body.newPassword, token);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'submit_audit': {
+        const res = Audit.submit(body.payload, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'create_handover': {
+        const res = Handover.createNote(body.payload, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'resolve_handover': {
+        const res = Handover.resolveNote(body.noteId, body.resolution, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      default:
+        return Utils.jsonResponse(null, false, '不支援的 POST Action: ' + action);
+    }
+  } catch (err) {
+    return Utils.jsonResponse(null, false, err.toString());
+  }
+}
