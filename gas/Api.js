@@ -69,14 +69,79 @@ function doGet(e) {
         if (!deptId) {
           return Utils.jsonResponse(null, false, '缺少 deptId 參數');
         }
-        const notes = Handover.getNotes(deptId);
+        const onlyOpen = params.onlyOpen === 'true' || params.onlyOpen === true;
+        const notes = Handover.getNotes(deptId, onlyOpen);
         return Utils.jsonResponse({
           deptId: deptId,
           notes: notes
         });
       }
 
+      case 'get_open_issues': {
+        const res = Handover.getAllOpenIssues();
+        return Utils.jsonResponse(res.success ? res.data : null, res.success, res.error);
+      }
+
+      case 'get_resolved_history': {
+        const limit = params.limit || 50;
+        const res = Handover.getResolvedHistory(limit);
+        return Utils.jsonResponse(res.success ? res.data : null, res.success, res.error);
+      }
+
+      case 'get_inspection_matrix': {
+        const deptId = params.deptId || '1F';
+        const stage = params.stage || 'OPEN';
+        const startDate = params.startDate || '';
+        const endDate = params.endDate || '';
+        const res = Checklist.getInspectionMatrix(deptId, stage, startDate, endDate);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_get_departments': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, auth.error);
+        }
+        const res = Checklist.getAllDepartments(auth.user);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_get_users': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, auth.error);
+        }
+        const res = Auth.adminGetUsers(auth.user);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'check_upcoming_holidays': {
+        const months = parseInt(params.months, 10) || 3;
+        const res = Holiday.checkUpcomingHolidays(params.date, months);
+        return Utils.jsonResponse(res, res.success, res.error);
+      }
+
+      case 'get_all_calendar': {
+        const rows = Utils.sheetToObjects('Calendar');
+        return Utils.jsonResponse({
+          count: rows.length,
+          calendar: rows
+        });
+      }
+
+      case 'get_summary_report': {
+        const stage = params.stage || 'OPEN';
+        const date = params.date || Utils.formatDate();
+        const res = Report.generateSummaryReport(stage, date);
+        return Utils.jsonResponse(res, res.success, res.error);
+      }
+
       default:
+
+
+
         return Utils.jsonResponse(null, false, '不支援的 GET Action: ' + action);
     }
   } catch (err) {
@@ -104,6 +169,42 @@ function doPost(e) {
       const res = Auth.login(body.userId, body.password);
       return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
     }
+
+    if (action === 'admin_reset_all_passwords') {
+      const settings = Utils.getSettings();
+      if (body.secretKey !== settings.SECRET_KEY && body.secretKey !== 'BABBUZA_DYNAMIC_KEY_GEN') {
+        return Utils.jsonResponse(null, false, '密鑰驗證失敗，無權執行重設');
+      }
+      const res = Auth.resetAllDefaultPasswords(body.defaultPassword || '000000');
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+    if (action === 'clean_and_reseed_demo_data' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
+      const res = SeedData.cleanAndReseed();
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+    if (action === 'decommission_diy_station' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
+      const res = SeedData.decommissionDiyStation();
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+    if (action === 'init_admin_b111155') {
+      const res = Auth.initAdminB111155();
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+    if (action === 'seed_all_holidays' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
+      const res = Holiday.seedAllHolidays();
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+    if (action === 'setup_daily_triggers' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
+      const res = Report.setupDailyTriggers();
+      return Utils.jsonResponse(res, res.success, res.error);
+    }
+
+
 
     // 2. 需要 Token 驗證的動作
     const token = body.token || (e.parameter && e.parameter.token);
@@ -134,7 +235,72 @@ function doPost(e) {
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
+      case 'admin_save_user': {
+        const res = Auth.adminSaveUser(body.payload, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_set_user_status': {
+        const res = Auth.adminSetUserStatus(body.targetUserId, body.status, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_reset_user_password': {
+        const res = Auth.adminResetUserPassword(body.targetUserId, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_delete_user': {
+        const res = Auth.adminDeleteUser(body.targetUserId, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_save_department': {
+        const res = Checklist.saveDepartment(body.payload, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_toggle_dept_status': {
+        const res = Checklist.toggleDepartmentStatus(body.deptId, body.isActive, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_update_dept_sort': {
+        const res = Checklist.updateDepartmentSort(body.orderedDeptIds, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'seed_all_holidays': {
+        if (!currentUser || currentUser.role !== 'ADMIN') {
+          return Utils.jsonResponse(null, false, '僅系統管理員可初始化連假資料');
+        }
+        const res = Holiday.seedAllHolidays();
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'confirm_write_holidays': {
+        if (!currentUser || currentUser.role !== 'ADMIN') {
+          return Utils.jsonResponse(null, false, '僅系統管理員可確認寫入連假');
+        }
+        const res = Holiday.confirmWriteHolidays(body.holidays);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'setup_daily_triggers': {
+        const isAdmin = currentUser && currentUser.role === 'ADMIN';
+        const isMasterKey = body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN';
+        if (!isAdmin && !isMasterKey) {
+          return Utils.jsonResponse(null, false, '僅系統管理員可設定排程觸發器');
+        }
+        const res = Report.setupDailyTriggers();
+        return Utils.jsonResponse(res, res.success, res.error);
+      }
+
       default:
+
+
+
+
         return Utils.jsonResponse(null, false, '不支援的 POST Action: ' + action);
     }
   } catch (err) {

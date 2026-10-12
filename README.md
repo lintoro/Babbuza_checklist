@@ -27,10 +27,26 @@ Babbuza_checklist/
 ├── ARCHITECTURE.md           # 系統架構規格與資料庫表定義
 ├── PROJECT_HANDOVER.md       # 換機開發與交接手冊（記錄討論歷程、重要決策與異地開發指引）
 ├── ISSUES_LOG.md             # 歷史問題與修正日誌
+├── package.json              # 前端套件依賴與腳本
+├── vite.config.js            # Vite 設定檔 (環境變數注入與路徑配置)
+├── tailwind.config.js        # TailwindCSS 樣式設定
+├── index.html                # 網頁進入點 (手機螢幕縮放與 PWA 準備)
+├── src/                      # 前端原始碼目錄 (React 18)
+│   ├── main.jsx              # React 進入點
+│   ├── App.jsx               # 主頁面流程與狀態串接
+│   ├── index.css             # 全域樣式與 Tailwind 載入
+│   ├── api.js                # 前端與 GAS 後端通訊模組 (GET/POST CORS 封裝)
+│   ├── context/
+│   │   └── AuthContext.jsx   # 認證與使用者狀態管理 (7天免登入)
+│   └── components/
+│       ├── Navbar.jsx        # 頂部導覽列 (使用者、改密碼、重整、登出)
+│       ├── LoginModal.jsx    # 工號密碼登入
+│       ├── ChangePasswordModal.jsx # 密碼修改 (首次強制/自由變更)
+│       ├── StationSelector.jsx     # 站點切換與開閉站狀態卡片
+│       ├── HandoverCard.jsx        # 即時交接備忘與未結案異常卡片
+│       ├── ChecklistSection.jsx    # 點檢項目 (手風琴/一鍵OK/三態/NG備註)
+│       └── SubmitModal.jsx         # 送出成功與 LINE 通報一鍵複製
 ├── test_api.py               # 後端 API 9 大核心端點自動化整合測試套件
-├── database/                 # 資料庫實體檔與產生工具
-│   ├── mall_checklist_db_v5.xlsx   # 本地 Master DB 原始檔 (10 張核心表)
-│   └── build_db_v5.py        # 產生資料庫結構與清洗資料之腳本
 └── gas/                      # Google Apps Script 原始碼目錄
     ├── appsscript.json       # GAS 專案設定檔 (時區 Asia/Taipei，啟用 WebApp 匿名存取)
     ├── Utils.js              # 加鹽 SHA-256、7天 Token 簽發驗證、時區與試算表工具

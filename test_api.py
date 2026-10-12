@@ -46,7 +46,7 @@ res_disabled = post({'action': 'login', 'userId': 'A115018', 'password': 'A11501
 print(json.dumps(res_disabled, ensure_ascii=False, indent=2))
 
 print('\n=== 3. 測試 在職員工正常登入 (B115050 李俐旻) ===')
-res_login = post({'action': 'login', 'userId': 'B115050', 'password': 'B115050'})
+res_login = post({'action': 'login', 'userId': 'B115050', 'password': '000000'})
 print('登入結果:', res_login.get('success'))
 print('使用者資訊:', res_login.get('data', {}).get('user'))
 token = res_login.get('data', {}).get('token')
@@ -66,14 +66,14 @@ if token:
         print(f" [{it['itemId']}] [{it['category']}] {it['title']} ({it['frequency']})")
 
     print('\n=== 6. 測試 極限組 6 人特別名單授權 (B113014 陳哲胤) ===')
-    res_extreme = post({'action': 'login', 'userId': 'B113014', 'password': 'B113014'})
+    res_extreme = post({'action': 'login', 'userId': 'B113014', 'password': '000000'})
     token_extreme = res_extreme.get('data', {}).get('token')
     if token_extreme:
         depts_ext = get(f'action=get_user_depts&token={token_extreme}').get('data', {}).get('departments', [])
         print("陳哲胤授權站點:", [d['deptId'] for d in depts_ext])
 
     print('\n=== 7. 測試 本小舖雙向綁定 (B113083 柯又溱) ===')
-    res_benxiao = post({'action': 'login', 'userId': 'B113083', 'password': 'B113083'})
+    res_benxiao = post({'action': 'login', 'userId': 'B113083', 'password': '000000'})
     token_bx = res_benxiao.get('data', {}).get('token')
     if token_bx:
         depts_bx = get(f'action=get_user_depts&token={token_bx}').get('data', {}).get('departments', [])

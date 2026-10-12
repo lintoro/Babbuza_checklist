@@ -19,8 +19,10 @@ const Checklist = {
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type,
-        openDeadline: Utils.formatTime(d.Open_Deadline),
-        closeDeadline: Utils.formatTime(d.Close_Deadline),
+        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
+        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
+        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
+        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
         isPrimary: d.Dept_ID === '1F'
       }));
     }
@@ -47,10 +49,207 @@ const Checklist = {
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type,
-        openDeadline: Utils.formatTime(d.Open_Deadline),
-        closeDeadline: Utils.formatTime(d.Close_Deadline),
+        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
+        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
+        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
+        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
         isPrimary: d.Dept_ID === primaryDeptId
       }));
+  },
+
+  /**
+   * 管理員取得所有站點清單 (含現行營運與停用刪除)
+   */
+  getAllDepartments: function(currentUser) {
+    const depts = Utils.sheetToObjects('Departments')
+      .sort((a, b) => (parseInt(a.Sort_Order, 10) || 0) - (parseInt(b.Sort_Order, 10) || 0));
+
+    return {
+      success: true,
+      departments: depts.map(d => ({
+        deptId: d.Dept_ID,
+        deptName: d.Dept_Name,
+        deptType: d.Dept_Type || 'STORE',
+        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
+        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
+        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
+        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
+        sortOrder: parseInt(d.Sort_Order, 10) || 0,
+        isActive: Boolean(d.Is_Active)
+      }))
+    };
+  },
+
+  /**
+   * 管理員儲存站點規格 (新增或編輯)
+   */
+  saveDepartment: function(deptData, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可編輯站點規格' };
+    }
+
+    const deptId = String(deptData.deptId || '').trim().toUpperCase();
+    const deptName = String(deptData.deptName || '').trim();
+    if (!deptId) return { success: false, error: '請填寫站點代碼' };
+    if (!deptName) return { success: false, error: '請填寫站點名稱' };
+
+    const deptType = String(deptData.deptType || 'STORE').trim();
+    const openStartTime = String(deptData.openStartTime || '09:30').trim();
+    const openDeadline = String(deptData.openDeadline || '10:30').trim();
+    const closeStartTime = String(deptData.closeStartTime || '16:45').trim();
+    const closeDeadline = String(deptData.closeDeadline || '20:00').trim();
+    const sortOrder = parseInt(deptData.sortOrder, 10) || 0;
+    const isActive = deptData.isActive !== false;
+
+    const sheet = Utils.getSheet('Departments');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    // 取得或動態擴充欄位 index
+    let openStartCol = headers.indexOf('Open_Start_Time');
+    let closeStartCol = headers.indexOf('Close_Start_Time');
+
+    if (openStartCol === -1) {
+      openStartCol = headers.length;
+      sheet.getRange(1, openStartCol + 1).setValue('Open_Start_Time');
+      headers.push('Open_Start_Time');
+    }
+    if (closeStartCol === -1) {
+      closeStartCol = headers.length;
+      sheet.getRange(1, closeStartCol + 1).setValue('Close_Start_Time');
+      headers.push('Close_Start_Time');
+    }
+
+    const idCol = headers.indexOf('Dept_ID');
+    const nameCol = headers.indexOf('Dept_Name');
+    const typeCol = headers.indexOf('Dept_Type');
+    const openDeadCol = headers.indexOf('Open_Deadline');
+    const closeDeadCol = headers.indexOf('Close_Deadline');
+    const sortCol = headers.indexOf('Sort_Order');
+    const activeCol = headers.indexOf('Is_Active');
+
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]).trim().toUpperCase() === deptId) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    if (targetRow !== -1) {
+      // 編輯更新既有站點
+      sheet.getRange(targetRow, nameCol + 1).setValue(deptName);
+      if (typeCol !== -1) sheet.getRange(targetRow, typeCol + 1).setValue(deptType);
+      sheet.getRange(targetRow, openDeadCol + 1).setValue(openDeadline);
+      sheet.getRange(targetRow, closeDeadCol + 1).setValue(closeDeadline);
+      sheet.getRange(targetRow, openStartCol + 1).setValue(openStartTime);
+      sheet.getRange(targetRow, closeStartCol + 1).setValue(closeStartTime);
+      if (sortCol !== -1) sheet.getRange(targetRow, sortCol + 1).setValue(sortOrder);
+      if (activeCol !== -1) sheet.getRange(targetRow, activeCol + 1).setValue(isActive);
+
+      return {
+        success: true,
+        isNew: false,
+        message: `站點 [${deptId}] ${deptName} 設定已更新`
+      };
+    } else {
+      // 新增站點
+      const newRow = new Array(headers.length).fill('');
+      newRow[idCol] = deptId;
+      newRow[nameCol] = deptName;
+      if (typeCol !== -1) newRow[typeCol] = deptType;
+      newRow[openDeadCol] = openDeadline;
+      newRow[closeDeadCol] = closeDeadline;
+      newRow[openStartCol] = openStartTime;
+      newRow[closeStartCol] = closeStartTime;
+      if (sortCol !== -1) newRow[sortCol] = sortOrder;
+      if (activeCol !== -1) newRow[activeCol] = isActive;
+
+      sheet.appendRow(newRow);
+
+      return {
+        success: true,
+        isNew: true,
+        message: `已新增站點 [${deptId}] ${deptName}！請記得配置點檢項目。`
+      };
+    }
+  },
+
+  /**
+   * 管理員切換站點啟用/停用狀態 (可一鍵恢復現行營運)
+   */
+  toggleDepartmentStatus: function(deptId, isActive, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可切換站點狀態' };
+    }
+
+    const cleanDept = String(deptId || '').trim().toUpperCase();
+    const sheet = Utils.getSheet('Departments');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    const idCol = headers.indexOf('Dept_ID');
+    const activeCol = headers.indexOf('Is_Active');
+
+    let targetRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]).trim().toUpperCase() === cleanDept) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    if (targetRow === -1) {
+      return { success: false, error: '找不到該站點資料' };
+    }
+
+    sheet.getRange(targetRow, activeCol + 1).setValue(Boolean(isActive));
+
+    return {
+      success: true,
+      deptId: cleanDept,
+      isActive: Boolean(isActive),
+      message: `站點 [${cleanDept}] 已切換為 ${isActive ? '現行營運' : '停用刪除'}`
+    };
+  },
+
+  /**
+   * 管理員批次更新站點排序順序 (上下移動微調)
+   */
+  updateDepartmentSort: function(orderedDeptIds, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可更新排序' };
+    }
+
+    if (!Array.isArray(orderedDeptIds) || orderedDeptIds.length === 0) {
+      return { success: false, error: '缺少排序站點代碼清單' };
+    }
+
+    const sheet = Utils.getSheet('Departments');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    const idCol = headers.indexOf('Dept_ID');
+    const sortCol = headers.indexOf('Sort_Order');
+
+    if (sortCol === -1) {
+      return { success: false, error: '試算表中查無 Sort_Order 欄位' };
+    }
+
+    orderedDeptIds.forEach((deptId, index) => {
+      const cleanDept = String(deptId).trim().toUpperCase();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][idCol]).trim().toUpperCase() === cleanDept) {
+          sheet.getRange(i + 1, sortCol + 1).setValue((index + 1) * 10);
+          break;
+        }
+      }
+    });
+
+    return {
+      success: true,
+      message: '站點順序已成功更新'
+    };
   },
 
   /**
@@ -69,23 +268,15 @@ const Checklist = {
 
     switch (frequency) {
       case 'HOLIDAY':
-        // 假日或週末
         return dayType === 'HOLIDAY' || dayType === 'WEEKEND';
-
       case 'EVERY_3_DAYS':
-        // 每3天執行一次 (以日期 mod 3 === 1 觸發，例 1, 4, 7, 10, 13, 16, 19, 22, 25, 28)
         return (dayOfMonth % 3 === 1);
-
       case 'BIWEEKLY_MON':
-        // 雙週一 (星期一且為當月第1或第3週)
         if (dayOfWeek !== 1) return false;
         const weekNum = Math.ceil(dayOfMonth / 7);
         return (weekNum === 1 || weekNum === 3);
-
       case 'BIMONTHLY':
-        // 雙月份 (2, 4, 6, 8, 10, 12 月的月初 1~3 號執行)
         return (month % 2 === 0);
-
       default:
         return true;
     }
@@ -93,9 +284,6 @@ const Checklist = {
 
   /**
    * 取得特定站點與時段的應點檢項目清單
-   * @param {string} deptId - 站點代碼 (例: 1F, MSS1)
-   * @param {string} stage - 時段 (OPEN / CLOSE)
-   * @param {string} dateStr - 營業日期 (YYYY-MM-DD)，若無則預設今天
    */
   getChecklistItems: function(deptId, stage, dateStr) {
     const targetDate = dateStr || Utils.formatDate();
@@ -108,7 +296,6 @@ const Checklist = {
       if (String(item.Dept_ID).trim().toUpperCase() !== cleanDept) return false;
       if (String(item.Stage).trim().toUpperCase() !== cleanStage) return false;
 
-      // 頻率過濾
       return this.isFrequencyApplicable(item.Frequency, targetDate);
     });
 
@@ -128,8 +315,6 @@ const Checklist = {
 
   /**
    * 查詢當日特定站點的點檢完成與送出狀態
-   * @param {string} deptId - 站點代碼
-   * @param {string} dateStr - 營業日期 (YYYY-MM-DD)
    */
   getDepartmentStatus: function(deptId, dateStr) {
     const targetDate = dateStr || Utils.formatDate();
@@ -171,6 +356,133 @@ const Checklist = {
         ngCount: closeLog.NG_Count,
         naCount: closeLog.NA_Count
       } : { isSubmitted: false }
+    };
+  },
+
+  /**
+   * 取得即時巡檢戰情矩陣資料 (如同原始 Excel 矩陣看板，包含各日期打勾、執行人與時間)
+   * @param {string} deptId - 站點代碼
+   * @param {string} stage - 時段 (OPEN / CLOSE)
+   * @param {string} startDate - 起始日期 (YYYY-MM-DD)
+   * @param {string} endDate - 結束日期 (YYYY-MM-DD)
+   */
+  getInspectionMatrix: function(deptId, stage, startDate, endDate) {
+    const cleanDept = String(deptId || '1F').trim().toUpperCase();
+    const cleanStage = String(stage || 'OPEN').trim().toUpperCase();
+
+    // 預設日期區間：若未指定，則取近 5 天
+    let endD = endDate ? new Date(endDate + 'T00:00:00+08:00') : new Date();
+    let startD = startDate ? new Date(startDate + 'T00:00:00+08:00') : new Date(endD.getTime() - 4 * 24 * 60 * 60 * 1000);
+
+    const dates = [];
+    const curr = new Date(startD);
+    while (curr <= endD) {
+      dates.push(Utils.formatDate(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    // 1. 取得該站點與時段之所有點檢範本項目
+    const allItems = Utils.sheetToObjects('Check_Items')
+      .filter(i => Boolean(i.Is_Active) &&
+                   String(i.Dept_ID).trim().toUpperCase() === cleanDept &&
+                   String(i.Stage).trim().toUpperCase() === cleanStage)
+      .sort((a, b) => (parseInt(a.Sort_Order, 10) || 0) - (parseInt(b.Sort_Order, 10) || 0));
+
+    // 2. 取得日期範圍內的 Audit_Logs 與對應的 Audit_Details
+    const allLogs = Utils.sheetToObjects('Audit_Logs').filter(l => {
+      let bDate = l.Biz_Date;
+      if (bDate instanceof Date) bDate = Utils.formatDate(bDate);
+      return String(l.Dept_ID).trim().toUpperCase() === cleanDept &&
+             String(l.Stage).trim().toUpperCase() === cleanStage &&
+             Boolean(l.Is_Current) &&
+             dates.includes(String(bDate).trim());
+    });
+
+    const logIds = allLogs.map(l => String(l.Log_ID).trim());
+    const allDetails = Utils.sheetToObjects('Audit_Details').filter(d => {
+      return logIds.includes(String(d.Log_ID).trim());
+    });
+
+    // 整理日誌快速對照表：logMap[date] = { logId, executorName, executorId, submitTime, isLate }
+    const logMap = {};
+    allLogs.forEach(l => {
+      let bDate = l.Biz_Date;
+      if (bDate instanceof Date) bDate = Utils.formatDate(bDate);
+      logMap[String(bDate).trim()] = {
+        logId: l.Log_ID,
+        executorName: l.Executor_Name,
+        executorId: l.Executor_ID,
+        submitTime: l.Submit_Time,
+        isLate: Boolean(l.Is_Late)
+      };
+    });
+
+    // 整理明細對照表：detailMap[`${logId}_${itemId}`] = { status, remark }
+    const detailMap = {};
+    allDetails.forEach(d => {
+      const key = `${String(d.Log_ID).trim()}_${String(d.Item_ID).trim()}`;
+      detailMap[key] = {
+        status: d.Status,
+        remark: d.Remark || ''
+      };
+    });
+
+    // 3. 組裝項目矩陣
+    const matrixItems = allItems.map(item => {
+      const recordsByDate = {};
+      dates.forEach(dateStr => {
+        const log = logMap[dateStr];
+        if (!log) {
+          recordsByDate[dateStr] = {
+            executed: false,
+            status: 'NONE',
+            executor: '',
+            submitTime: '',
+            remark: ''
+          };
+        } else {
+          const detail = detailMap[`${log.logId}_${item.Item_ID}`];
+          recordsByDate[dateStr] = {
+            executed: true,
+            status: detail ? detail.status : 'OK',
+            executor: `${log.executorName} (${log.executorId})`,
+            executorName: log.executorName,
+            submitTime: log.submitTime,
+            isLate: log.isLate,
+            remark: detail ? detail.remark : ''
+          };
+        }
+      });
+
+      return {
+        itemId: item.Item_ID,
+        category: item.Category,
+        title: item.Title,
+        frequency: item.Frequency,
+        records: recordsByDate
+      };
+    });
+
+    // 讀取 Calendar 中的假日與連假資訊
+    const calendarRows = Utils.sheetToObjects('Calendar');
+    const holidayMap = {};
+    calendarRows.forEach(c => {
+      let cDate = c.Date;
+      if (cDate instanceof Date) cDate = Utils.formatDate(cDate);
+      if (c.Day_Type === 'HOLIDAY' && c.Note) {
+        holidayMap[String(cDate).trim()] = String(c.Note).trim();
+      }
+    });
+
+    return {
+      success: true,
+      deptId: cleanDept,
+      deptName: deptInfo ? deptInfo.Dept_Name : cleanDept,
+      stage: cleanStage,
+      dates: dates,
+      daySummaries: logMap,
+      holidays: holidayMap,
+      items: matrixItems
     };
   }
 };
