@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { apiGet, apiPost } from '../api';
+import { apiGet, apiPost, getTaipeiDateString } from '../api';
 import {
   LayoutGrid,
   AlertTriangle,
@@ -148,6 +148,7 @@ export default function AdminWarRoomView() {
     try {
       const res = await apiGet({
         action: 'get_inspection_matrix',
+        token,
         deptId: targetDept,
         stage: targetStage
       });
@@ -165,7 +166,7 @@ export default function AdminWarRoomView() {
   const loadIssues = async () => {
     setLoadingIssues(true);
     try {
-      const res = await apiGet({ action: 'get_open_issues' });
+      const res = await apiGet({ action: 'get_open_issues', token });
       if (res.success && res.data) {
         setIssuesData(res.data);
       }
@@ -180,7 +181,7 @@ export default function AdminWarRoomView() {
   const loadResolved = async () => {
     setLoadingResolved(true);
     try {
-      const res = await apiGet({ action: 'get_resolved_history', limit: 100 });
+      const res = await apiGet({ action: 'get_resolved_history', token, limit: 100 });
       if (res.success && res.data) {
         setResolvedData(res.data);
       }
@@ -208,7 +209,7 @@ export default function AdminWarRoomView() {
   // 當矩陣資料載入完成，直接定位至當時日期 (免手動拉動)
   useEffect(() => {
     if (activeTab === 'matrix' && matrixData && matrixData.dates && tableContainerRef.current) {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = getTaipeiDateString();
       const targetDate = matrixData.dates.includes(todayStr)
         ? todayStr
         : matrixData.dates[matrixData.dates.length - 1];
@@ -462,7 +463,7 @@ export default function AdminWarRoomView() {
                     {/* 日期欄位 (向右延伸可橫向捲動，頂部固定) */}
                     {matrixData.dates.map((dateStr) => {
                       const summary = matrixData.daySummaries?.[dateStr];
-                      const isToday = dateStr === new Date().toISOString().slice(0, 10);
+                      const isToday = dateStr === getTaipeiDateString();
                       const headerTitle = formatDateHeader(dateStr, matrixData.holidays);
                       const isHoliday = Boolean(
                         (matrixData.holidays && matrixData.holidays[dateStr]) ||
@@ -520,7 +521,7 @@ export default function AdminWarRoomView() {
                       {/* 日期欄位資料格 */}
                       {matrixData.dates.map((dateStr) => {
                         const rec = item.records?.[dateStr];
-                        const isToday = dateStr === new Date().toISOString().slice(0, 10);
+                        const isToday = dateStr === getTaipeiDateString();
 
                         if (!rec || !rec.executed) {
                           return (

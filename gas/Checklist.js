@@ -15,7 +15,7 @@ const Checklist = {
 
     // 管理員或主管擁有全商場站點權限
     if (role === 'ADMIN' || role === 'SUPERVISOR') {
-      return allDepts.map(d => ({
+      return allDepts.map((d, idx) => ({
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type,
@@ -23,7 +23,7 @@ const Checklist = {
         openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
         closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
         closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
-        isPrimary: d.Dept_ID === '1F'
+        isPrimary: idx === 0
       }));
     }
 
@@ -370,9 +370,9 @@ const Checklist = {
     const cleanDept = String(deptId || '1F').trim().toUpperCase();
     const cleanStage = String(stage || 'OPEN').trim().toUpperCase();
 
-    // 預設日期區間：若未指定，則取近 5 天
+    // 預設日期區間：若未指定，則預設取近 15 天至今日
     let endD = endDate ? new Date(endDate + 'T00:00:00+08:00') : new Date();
-    let startD = startDate ? new Date(startDate + 'T00:00:00+08:00') : new Date(endD.getTime() - 4 * 24 * 60 * 60 * 1000);
+    let startD = startDate ? new Date(startDate + 'T00:00:00+08:00') : new Date(endD.getTime() - 14 * 24 * 60 * 60 * 1000);
 
     const dates = [];
     const curr = new Date(startD);
@@ -412,7 +412,7 @@ const Checklist = {
         logId: l.Log_ID,
         executorName: l.Executor_Name,
         executorId: l.Executor_ID,
-        submitTime: l.Submit_Time,
+        submitTime: Utils.formatTime(l.Submit_Time),
         isLate: Boolean(l.Is_Late)
       };
     });
@@ -442,15 +442,28 @@ const Checklist = {
           };
         } else {
           const detail = detailMap[`${log.logId}_${item.Item_ID}`];
-          recordsByDate[dateStr] = {
-            executed: true,
-            status: detail ? detail.status : 'OK',
-            executor: `${log.executorName} (${log.executorId})`,
-            executorName: log.executorName,
-            submitTime: log.submitTime,
-            isLate: log.isLate,
-            remark: detail ? detail.remark : ''
-          };
+          if (!detail) {
+            // 當天有送出日誌，但此特定項目並無稽核明細（例如頻率不適用或當時未列入），真實標記為未涵蓋
+            recordsByDate[dateStr] = {
+              executed: false,
+              status: 'NA',
+              executor: `${log.executorName} (${log.executorId})`,
+              executorName: log.executorName,
+              submitTime: log.submitTime,
+              isLate: log.isLate,
+              remark: ''
+            };
+          } else {
+            recordsByDate[dateStr] = {
+              executed: true,
+              status: detail.status || 'OK',
+              executor: `${log.executorName} (${log.executorId})`,
+              executorName: log.executorName,
+              submitTime: log.submitTime,
+              isLate: log.isLate,
+              remark: detail.remark || ''
+            };
+          }
         }
       });
 

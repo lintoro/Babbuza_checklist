@@ -207,6 +207,7 @@ export default function AdminStationsView() {
     try {
       const res = await apiGet({
         action: 'check_upcoming_holidays',
+        token,
         months,
       });
       if (res.success && res.data) {
@@ -221,9 +222,13 @@ export default function AdminStationsView() {
 
   // 一鍵確認寫入資料庫
   const handleConfirmWriteHolidays = async () => {
-    if (!holidayCheckData?.upcomingHolidays?.length) return;
+    const unwrittenList = (holidayCheckData?.holidays || []).filter((h) => !h.isAlreadyInDb);
+    if (!unwrittenList.length) {
+      alert('所有檢查出的假期皆已存在於資料庫中，無須重複寫入！');
+      return;
+    }
     const confirm = window.confirm(
-      `確定要將檢查出的 ${holidayCheckData.upcomingHolidays.length} 筆未來連續假期與補休日確認寫入 Google Sheets Calendar 資料庫嗎？`
+      `確定要將檢查出的 ${unwrittenList.length} 筆未來新連續假期與補休日確認寫入 Google Sheets Calendar 資料庫嗎？`
     );
     if (!confirm) return;
 
@@ -233,11 +238,11 @@ export default function AdminStationsView() {
       const res = await apiPost({
         action: 'confirm_write_holidays',
         token,
-        holidays: holidayCheckData.upcomingHolidays,
+        holidays: unwrittenList,
       });
 
       if (res.success) {
-        setStatusMsg(`✅ 成功寫入連假資料庫！共新增 ${res.data?.addedCount || 0} 筆全新假期紀錄。`);
+        setStatusMsg(`✅ 成功寫入連假資料庫！共新增 ${res.writtenCount || res.data?.writtenCount || unwrittenList.length} 筆全新假期紀錄。`);
         handleCheckHolidays(holidayMonths);
       } else {
         setStatusMsg('❌ 寫入失敗：' + (res.error || '不明錯誤'));
@@ -636,14 +641,14 @@ export default function AdminStationsView() {
               <div>
                 <span className="font-bold text-slate-700">檢查涵蓋區間：</span>
                 <span className="font-mono text-purple-700 font-semibold ml-1">
-                  {holidayCheckData.startDate} ~ {holidayCheckData.endDate}
+                  {holidayCheckData.baseDate} ~ {holidayCheckData.endDate}
                 </span>
                 <span className="text-slate-400 ml-2">
-                  (共 {holidayCheckData.totalHolidaysFound} 天假日，含已建檔及新檢查出假期)
+                  (共比對出 {holidayCheckData.count} 天假期，其中 {holidayCheckData.unwrittenCount} 筆尚未寫入資料庫)
                 </span>
               </div>
 
-              {holidayCheckData.upcomingHolidays?.length > 0 && (
+              {holidayCheckData.unwrittenCount > 0 && (
                 <button
                   type="button"
                   onClick={handleConfirmWriteHolidays}
@@ -655,7 +660,7 @@ export default function AdminStationsView() {
                   ) : (
                     <Database className="w-3.5 h-3.5 mr-1" />
                   )}
-                  <span>確認寫入資料庫 ({holidayCheckData.upcomingHolidays.length} 筆)</span>
+                  <span>確認寫入資料庫 ({holidayCheckData.unwrittenCount} 筆新假期)</span>
                 </button>
               )}
             </div>
@@ -667,33 +672,40 @@ export default function AdminStationsView() {
                     <th className="py-2.5 px-3">日期</th>
                     <th className="py-2.5 px-3">節日 / 假期名稱</th>
                     <th className="py-2.5 px-3">類型</th>
-                    <th className="py-2.5 px-3">資料庫狀態</th>
+                    <th className="py-2.5 px-3">資料庫建檔狀態</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {holidayCheckData.upcomingHolidays?.length === 0 ? (
+                  {!holidayCheckData.holidays?.length ? (
                     <tr>
                       <td colSpan={4} className="py-4 text-center text-slate-400">
-                        目前區間內所有國定連假均已全數建檔於資料庫中，無漏缺項目。
+                        目前區間內未檢測出任何連續假期。
                       </td>
                     </tr>
                   ) : (
-                    holidayCheckData.upcomingHolidays?.map((h) => (
+                    holidayCheckData.holidays.map((h) => (
                       <tr key={h.date} className="hover:bg-slate-50 transition-colors">
                         <td className="py-2 px-3 font-mono font-bold text-slate-800">
                           {h.date}
                         </td>
                         <td className="py-2 px-3 font-medium text-purple-900">
-                          {h.name}
+                          {h.note || h.name}
                         </td>
                         <td className="py-2 px-3 text-slate-500">
-                          {h.dayType === 'HOLIDAY' ? '國定/補休' : h.dayType}
+                          {h.dayType === 'HOLIDAY' ? '國定/連假' : h.dayType}
                         </td>
                         <td className="py-2 px-3">
-                          <span className="inline-flex items-center text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            已比對就緒
-                          </span>
+                          {h.isAlreadyInDb ? (
+                            <span className="inline-flex items-center text-[10px] bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">
+                              <CheckCircle2 className="w-3 h-3 mr-1 text-slate-400" />
+                              已在資料庫中
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full">
+                              <PlusCircle className="w-3 h-3 mr-1" />
+                              待確認寫入
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))

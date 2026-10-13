@@ -35,8 +35,8 @@ const Auth = {
     const hasExistingHash = Boolean(user.Password_Hash && String(user.Password_Hash).trim() !== '');
 
     if (!hasExistingHash) {
-      // 首次登入預設密碼：可為自身工號 (大寫) 或 預設 '123456'
-      if (cleanPwd === cleanUserId || cleanPwd === '123456') {
+      // 統一標準：首次登入預設密碼一律為 '000000'
+      if (cleanPwd === '000000') {
         isPasswordCorrect = true;
       }
     } else {
@@ -417,9 +417,16 @@ const Auth = {
     usersSheet.getRange(targetRow, statusCol + 1).setValue(cleanStatus);
     usersSheet.getRange(targetRow, updatedCol + 1).setValue(nowStr);
 
+    // 若設定為離職或留停，立即遞增 Token_Version 使既有連線 Token 瞬間失效
+    const tokenVerCol = headers.indexOf('Token_Version');
+    if (tokenVerCol !== -1 && (cleanStatus === 'LEAVE' || cleanStatus === 'DISABLED')) {
+      const currentVer = parseInt(usersData[targetRow - 1][tokenVerCol], 10) || 1;
+      usersSheet.getRange(targetRow, tokenVerCol + 1).setValue(currentVer + 1);
+    }
+
     return {
       success: true,
-      message: `同仁 [${cleanUserId}] 狀態已更新為 ${cleanStatus}`
+      message: `同仁 [${cleanUserId}] 狀態已更新為 ${cleanStatus}，且已同步使舊 Token 作廢`
     };
   },
 

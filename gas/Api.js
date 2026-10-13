@@ -33,6 +33,12 @@ function doGet(e) {
       }
 
       case 'get_checklist': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const deptId = params.deptId;
         const stage = params.stage || 'OPEN';
         const date = params.date || Utils.formatDate();
@@ -55,6 +61,12 @@ function doGet(e) {
       }
 
       case 'get_dept_status': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const deptId = params.deptId;
         const date = params.date || Utils.formatDate();
         if (!deptId) {
@@ -65,6 +77,12 @@ function doGet(e) {
       }
 
       case 'get_handover': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const deptId = params.deptId;
         if (!deptId) {
           return Utils.jsonResponse(null, false, '缺少 deptId 參數');
@@ -78,17 +96,35 @@ function doGet(e) {
       }
 
       case 'get_open_issues': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const res = Handover.getAllOpenIssues();
         return Utils.jsonResponse(res.success ? res.data : null, res.success, res.error);
       }
 
       case 'get_resolved_history': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const limit = params.limit || 50;
         const res = Handover.getResolvedHistory(limit);
         return Utils.jsonResponse(res.success ? res.data : null, res.success, res.error);
       }
 
       case 'get_inspection_matrix': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const deptId = params.deptId || '1F';
         const stage = params.stage || 'OPEN';
         const startDate = params.startDate || '';
@@ -118,6 +154,12 @@ function doGet(e) {
       }
 
       case 'check_upcoming_holidays': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const months = parseInt(params.months, 10) || 3;
         const res = Holiday.checkUpcomingHolidays(params.date, months);
         return Utils.jsonResponse(res, res.success, res.error);
@@ -132,6 +174,12 @@ function doGet(e) {
       }
 
       case 'get_summary_report': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+
         const stage = params.stage || 'OPEN';
         const date = params.date || Utils.formatDate();
         const res = Report.generateSummaryReport(stage, date);
@@ -164,44 +212,10 @@ function doPost(e) {
 
     const action = body.action || '';
 
-    // 1. 公開/無需 Token 的動作
+    // 1. 公開/無需 Token 的動作 (僅限登入)
     if (action === 'login') {
       const res = Auth.login(body.userId, body.password);
       return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
-    }
-
-    if (action === 'admin_reset_all_passwords') {
-      const settings = Utils.getSettings();
-      if (body.secretKey !== settings.SECRET_KEY && body.secretKey !== 'BABBUZA_DYNAMIC_KEY_GEN') {
-        return Utils.jsonResponse(null, false, '密鑰驗證失敗，無權執行重設');
-      }
-      const res = Auth.resetAllDefaultPasswords(body.defaultPassword || '000000');
-      return Utils.jsonResponse(res, res.success, res.error);
-    }
-
-    if (action === 'clean_and_reseed_demo_data' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
-      const res = SeedData.cleanAndReseed();
-      return Utils.jsonResponse(res, res.success, res.error);
-    }
-
-    if (action === 'decommission_diy_station' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
-      const res = SeedData.decommissionDiyStation();
-      return Utils.jsonResponse(res, res.success, res.error);
-    }
-
-    if (action === 'init_admin_b111155') {
-      const res = Auth.initAdminB111155();
-      return Utils.jsonResponse(res, res.success, res.error);
-    }
-
-    if (action === 'seed_all_holidays' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
-      const res = Holiday.seedAllHolidays();
-      return Utils.jsonResponse(res, res.success, res.error);
-    }
-
-    if (action === 'setup_daily_triggers' && (body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN' || body.secretKey === Utils.getSettings().SECRET_KEY)) {
-      const res = Report.setupDailyTriggers();
-      return Utils.jsonResponse(res, res.success, res.error);
     }
 
 
@@ -288,8 +302,8 @@ function doPost(e) {
 
       case 'setup_daily_triggers': {
         const isAdmin = currentUser && currentUser.role === 'ADMIN';
-        const isMasterKey = body.secretKey === 'BABBUZA_DYNAMIC_KEY_GEN';
-        if (!isAdmin && !isMasterKey) {
+        const isSecretKey = body.secretKey && body.secretKey === Utils.getSecretKey();
+        if (!isAdmin && !isSecretKey) {
           return Utils.jsonResponse(null, false, '僅系統管理員可設定排程觸發器');
         }
         const res = Report.setupDailyTriggers();

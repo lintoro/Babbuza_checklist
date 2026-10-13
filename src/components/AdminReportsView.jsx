@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { apiGet } from '../api';
+import { useAuth } from '../context/AuthContext';
+import { apiGet, getTaipeiDateString } from '../api';
 import {
   FileText,
   Copy,
@@ -17,12 +18,13 @@ import {
 } from 'lucide-react';
 
 export default function AdminReportsView() {
+  const { token } = useAuth();
   const [stage, setStage] = useState(() => {
     const hour = new Date().getHours();
     return hour >= 14 ? 'CLOSE' : 'OPEN';
   });
   const [selectedDate, setSelectedDate] = useState(() => {
-    return new Date().toISOString().slice(0, 10);
+    return getTaipeiDateString();
   });
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,7 @@ export default function AdminReportsView() {
     try {
       const res = await apiGet({
         action: 'get_summary_report',
+        token,
         stage: targetStage,
         date: targetDate,
       });

@@ -62,8 +62,7 @@ const Utils = {
       PWD_MIN_LEN: 6,
       PWD_MAX_LEN: 8,
       DEFAULT_OPEN_DEADLINE: '10:30',
-      DEFAULT_CLOSE_DEADLINE: '20:00',
-      SECRET_KEY: 'BABBUZA_DYNAMIC_KEY_GEN'
+      DEFAULT_CLOSE_DEADLINE: '20:00'
     };
     rows.forEach(r => {
       if (r.Key) {
@@ -71,6 +70,23 @@ const Utils = {
       }
     });
     return settings;
+  },
+
+  /**
+   * 取得系統安全密鑰 (優先自雲端 Script Properties 取得，杜絕程式碼硬編碼)
+   */
+  getSecretKey: function() {
+    let secret = PropertiesService.getScriptProperties().getProperty('SECRET_KEY');
+    if (!secret) {
+      const settings = this.getSettings();
+      secret = settings.SECRET_KEY;
+    }
+    if (!secret) {
+      // 若尚未設定，自動生成一組 32 碼高強度隨機密鑰並安全寫入 ScriptProperties
+      secret = this.generateSalt(32);
+      PropertiesService.getScriptProperties().setProperty('SECRET_KEY', secret);
+    }
+    return secret;
   },
 
   /**
@@ -103,13 +119,13 @@ const Utils = {
 
   /**
    * 產生安全的 Session Token
-   * 格式: base64(userId:timestamp:tokenVersion:signature)
+   * 格式: base64(userId:role:timestamp:tokenVersion:signature)
    */
   generateToken: function(userId, role, tokenVersion) {
-    const settings = this.getSettings();
+    const secretKey = this.getSecretKey();
     const timestamp = Date.now();
     const payload = `${userId}:${role}:${timestamp}:${tokenVersion}`;
-    const signature = this.sha256(payload, settings.SECRET_KEY || 'BABBUZA_SECRET');
+    const signature = this.sha256(payload, secretKey);
     const fullStr = `${payload}:${signature}`;
     return Utilities.base64Encode(fullStr);
   },
@@ -126,8 +142,9 @@ const Utils = {
 
       const [userId, role, timestampStr, tokenVersionStr, signature] = parts;
       const settings = this.getSettings();
+      const secretKey = this.getSecretKey();
       const payload = `${userId}:${role}:${timestampStr}:${tokenVersionStr}`;
-      const expectedSign = this.sha256(payload, settings.SECRET_KEY || 'BABBUZA_SECRET');
+      const expectedSign = this.sha256(payload, secretKey);
 
       if (signature !== expectedSign) {
         return { valid: false, error: 'Token 簽章無效' };
@@ -143,12 +160,15 @@ const Utils = {
 
       // 檢查 Users 表驗證版本與帳號狀態
       const users = this.sheetToObjects('Users');
-      const user = users.find(u => String(u.User_ID).trim() === String(userId).trim());
+      const user = users.find(u => String(u.User_ID).trim().toUpperCase() === String(userId).trim().toUpperCase());
       if (!user) {
         return { valid: false, error: '使用者不存在' };
       }
       if (user.Status === 'DISABLED') {
         return { valid: false, error: '此帳號已停用或已離職' };
+      }
+      if (user.Status === 'LEAVE') {
+        return { valid: false, error: '此帳號為留職停薪/長假狀態，已暫停登入使用權限' };
       }
       if (parseInt(user.Token_Version, 10) !== parseInt(tokenVersionStr, 10)) {
         return { valid: false, error: 'Token 已失效，密碼可能已變更' };
@@ -176,14 +196,14 @@ const Utils = {
   },
 
   /**
-   * 格式化台北時區時間 HH:mm:ss
+   * 格式化台北時區時間 YYYY-MM-DD HH:mm:ss
    */
   formatDateTime: function(date = new Date()) {
     return Utilities.formatDate(date, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
   },
 
   /**
-   * 格式化純時間 HH:mm
+   * 格式化純時間 HH:mm (台北時區)
    */
   formatTime: function(val = new Date()) {
     if (!val) return '';
@@ -196,14 +216,6 @@ const Utils = {
       }
     }
     if (val instanceof Date) {
-      const year = val.getFullYear();
-      if (year < 1970) {
-        let h = val.getHours();
-        const m = ('0' + val.getMinutes()).slice(-2);
-        if (h <= 4) h += 8; // 補回 UTC+8
-        else if (h === 12) h = 20; // 營業後 20:00 (12 + 8)
-        return ('0' + h).slice(-2) + ':' + m;
-      }
       return Utilities.formatDate(val, 'Asia/Taipei', 'HH:mm');
     }
     return String(val);

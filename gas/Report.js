@@ -8,24 +8,20 @@ const Report = {
    * 站點中文名稱對照表
    */
   getDeptName: function(deptId, deptsList) {
-    if (deptId === 'BENPU') return '本鋪';
-    if (deptId === 'XIAOPU') return '小鋪';
+    if (!deptId) return '';
+    const cleanId = String(deptId).trim().toUpperCase();
     if (Array.isArray(deptsList)) {
-      const found = deptsList.find(d => d.Dept_ID === deptId);
+      const found = deptsList.find(d => String(d.Dept_ID).trim().toUpperCase() === cleanId);
       if (found && found.Dept_Name) return found.Dept_Name;
     }
-    const map = {
-      '1F': '1F服務台',
-      'B1': 'B1服務台',
-      '8F': '8F服務台',
-      'MSS1': '旗艦一店',
-      'MSS2': '旗艦二店',
-      'YUANPIN': '原品',
-      'GAGOO': 'GAGU',
-      'BAOQINGZHU': '保青竹',
-      'EXTREME': '極限組'
-    };
-    return map[deptId] || deptId;
+    // 若未傳入或找不到，動態自 Departments 資料表讀取
+    const allDepts = Utils.sheetToObjects('Departments');
+    const matched = allDepts.find(d => String(d.Dept_ID).trim().toUpperCase() === cleanId);
+    if (matched && matched.Dept_Name) return matched.Dept_Name;
+
+    if (cleanId === 'BENPU') return '本鋪';
+    if (cleanId === 'XIAOPU') return '小鋪';
+    return cleanId;
   },
 
   /**

@@ -10,8 +10,18 @@ export default function StationSelector({
   deptStatus,
   currentDeptInfo,
 }) {
-  const openStatus = deptStatus?.OPEN;
-  const closeStatus = deptStatus?.CLOSE;
+  const openStatus = deptStatus?.open || deptStatus?.OPEN;
+  const closeStatus = deptStatus?.close || deptStatus?.CLOSE;
+  const isOpenCompleted = Boolean(openStatus?.isSubmitted || openStatus?.completed);
+  const isCloseCompleted = Boolean(closeStatus?.isSubmitted || closeStatus?.completed);
+
+  const formatShortTime = (t) => {
+    if (!t) return '';
+    const str = String(t).trim();
+    if (str.includes(' ')) return str.split(' ')[1].slice(0, 5);
+    if (str.includes('T')) return str.split('T')[1].slice(0, 5);
+    return str.slice(0, 5);
+  };
 
   const openStart = currentDeptInfo?.openStartTime || '09:30';
   const openDead = currentDeptInfo?.openDeadline || '10:30';
@@ -73,7 +83,7 @@ export default function StationSelector({
                 營業前 (開店)
               </span>
             </div>
-            {openStatus?.completed && (
+            {isOpenCompleted && (
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             )}
           </div>
@@ -85,9 +95,9 @@ export default function StationSelector({
 
           {/* 狀態標籤 */}
           <div className="mt-2 flex items-center">
-            {openStatus?.completed ? (
+            {isOpenCompleted ? (
               <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                ✓ 已於 {openStatus.submitTime?.slice(11, 16)} 完成
+                ✓ 已於 {formatShortTime(openStatus?.submitTime)} 完成
               </span>
             ) : (
               <span className="inline-flex items-center text-[10px] font-medium text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">
@@ -114,7 +124,7 @@ export default function StationSelector({
                 營業後 (閉店)
               </span>
             </div>
-            {closeStatus?.completed && (
+            {isCloseCompleted && (
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             )}
           </div>
@@ -126,9 +136,9 @@ export default function StationSelector({
 
           {/* 狀態標籤 */}
           <div className="mt-2 flex items-center">
-            {closeStatus?.completed ? (
+            {isCloseCompleted ? (
               <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                ✓ 已於 {closeStatus.submitTime?.slice(11, 16)} 完成
+                ✓ 已於 {formatShortTime(closeStatus?.submitTime)} 完成
               </span>
             ) : (
               <span className="inline-flex items-center text-[10px] font-medium text-slate-600 bg-slate-200/70 px-2 py-0.5 rounded-md">

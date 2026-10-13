@@ -10,6 +10,7 @@ import {
   Send,
   Loader2,
   CalendarDays,
+  Clock,
 } from 'lucide-react';
 
 export default function ChecklistSection({

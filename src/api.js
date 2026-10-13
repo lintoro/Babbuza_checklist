@@ -72,5 +72,17 @@ export async function apiPost(payload = {}) {
   if (!data.success && data.error) {
     throw new Error(data.error);
   }
-  return data;
+}
+
+/**
+ * 取得台北時區 (Asia/Taipei, UTC+8) 的 YYYY-MM-DD 字串
+ * 杜絕 UTC 跨日轉換 (00:00~08:00) 導致日期倒退一天的問題
+ */
+export function getTaipeiDateString(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 }
