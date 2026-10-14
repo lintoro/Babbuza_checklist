@@ -64,6 +64,7 @@ export default function HandoverCard({ notes = [], loading = false, onReload = n
     try {
       const res = await apiGet({
         action: 'get_resolved_history',
+        token,
         limit: 30
       });
       if (res.success && res.data) {

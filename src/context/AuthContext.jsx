@@ -91,8 +91,16 @@ export function AuthProvider({ children }) {
       newPassword,
     });
     if (res.success) {
-      // 密碼變更成功後清除強制修改標記
-      setUser(prev => ({ ...prev, mustChangePwd: false }));
+      // 密碼變更成功後同步最新 Token 與清除強制修改標記
+      const newToken = res.data?.token || res.token;
+      const updatedUser = res.data?.user || res.user || { ...user, mustChangePwd: false };
+
+      if (newToken) {
+        setToken(newToken);
+        localStorage.setItem(STORAGE_KEY_TOKEN, newToken);
+      }
+      setUser(updatedUser);
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
       setMustChangePwdModal(false);
       return { success: true };
     }

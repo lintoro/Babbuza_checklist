@@ -19,8 +19,8 @@ export default function ChangePasswordModal({ isOpen, onClose, isForced = false 
       setError('請輸入目前使用的密碼');
       return;
     }
-    if (!newPassword || newPassword.length < 4) {
-      setError('新密碼長度至少需要 4 碼以上');
+    if (!newPassword || newPassword.length < 6 || newPassword.length > 8) {
+      setError('新密碼長度必須介於 6 至 8 碼之間');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -113,13 +113,14 @@ export default function ChangePasswordModal({ isOpen, onClose, isForced = false 
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                新密碼（至少 4 碼）
+                新密碼（6 ~ 8 碼）
               </label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="請輸入新密碼"
+                placeholder="請輸入 6 ~ 8 碼新密碼"
+                maxLength={8}
                 className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500"
                 required
               />
