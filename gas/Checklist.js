@@ -382,6 +382,9 @@ const Checklist = {
     }
 
     // 1. 取得該站點與時段之所有點檢範本項目
+    const departments = Utils.sheetToObjects('Departments');
+    const deptInfo = departments.find(d => String(d.Dept_ID).trim().toUpperCase() === cleanDept);
+
     const allItems = Utils.sheetToObjects('Check_Items')
       .filter(i => Boolean(i.Is_Active) &&
                    String(i.Dept_ID).trim().toUpperCase() === cleanDept &&

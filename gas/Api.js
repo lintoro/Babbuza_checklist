@@ -9,6 +9,7 @@ function doGet(e) {
 
     switch (action) {
       case 'status':
+      case 'health':
       case 'ping': {
         const ss = Utils.getSpreadsheet();
         return Utils.jsonResponse({
