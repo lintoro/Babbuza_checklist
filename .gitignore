@@ -1,6 +1,7 @@
 # 機敏與環境變數檔案
 .env
-.env.local
+.env.*
+!.env.example
 
 # Clasp 憑證與設定檔 (含使用者授權 token)
 .clasp.json

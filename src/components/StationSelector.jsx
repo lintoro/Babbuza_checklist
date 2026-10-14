@@ -18,8 +18,20 @@ export default function StationSelector({
   const formatShortTime = (t) => {
     if (!t) return '';
     const str = String(t).trim();
+    if (str.includes('T') || str.includes('Z')) {
+      try {
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleTimeString('zh-TW', {
+            timeZone: 'Asia/Taipei',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
+        }
+      } catch (e) {}
+    }
     if (str.includes(' ')) return str.split(' ')[1].slice(0, 5);
-    if (str.includes('T')) return str.split('T')[1].slice(0, 5);
     return str.slice(0, 5);
   };
 

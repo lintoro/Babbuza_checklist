@@ -150,6 +150,18 @@ function doGet(e) {
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
+      case 'admin_get_checklist_items': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, auth.error);
+        }
+        const deptId = params.deptId || '1F';
+        const stage = params.stage || 'OPEN';
+        const res = Checklist.adminGetChecklistItems(deptId, stage, auth.user);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
       case 'admin_get_users': {
         const token = params.token;
         const auth = Utils.validateToken(token);
@@ -289,6 +301,39 @@ function doPost(e) {
       case 'admin_update_dept_sort': {
         const res = Checklist.updateDepartmentSort(body.orderedDeptIds, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_save_checklist_item': {
+        const res = Checklist.adminSaveChecklistItem(body.payload, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_toggle_item_status': {
+        const res = Checklist.adminToggleItemStatus(body.itemId, body.isActive, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_delete_checklist_item': {
+        const res = Checklist.adminDeleteItem(body.itemId, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_update_item_sort': {
+        const res = Checklist.adminUpdateItemSort(body.orderedItemIds, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_remove_audit_log': {
+        const res = Checklist.removeAuditLog(body.logId, currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
+      case 'admin_normalize_times': {
+        if (!currentUser || currentUser.role !== 'ADMIN') {
+          return Utils.jsonResponse(null, false, '僅系統管理員可執行');
+        }
+        Utils.normalizeDepartmentTimes();
+        return Utils.jsonResponse({ success: true, message: '站點營業時間已成功正規化為純字串' });
       }
 
       case 'seed_all_holidays': {

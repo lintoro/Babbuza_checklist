@@ -3,6 +3,14 @@
  */
 
 const Checklist = {
+  resolveTime: function(rawVal, defaultVal, minValid, maxValid) {
+    const formatted = Utils.formatTime(rawVal);
+    if (!formatted) return defaultVal;
+    if (minValid && formatted < minValid) return defaultVal;
+    if (maxValid && formatted > maxValid) return defaultVal;
+    return formatted;
+  },
+
   /**
    * 取得同仁可執行的站點清單
    * @param {string} userId - 員工編號
@@ -19,10 +27,10 @@ const Checklist = {
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type,
-        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
-        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
-        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
-        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
+        openStartTime: this.resolveTime(d.Open_Start_Time, '09:30', '06:00', '14:00'),
+        openDeadline: this.resolveTime(d.Open_Deadline, '10:30', '07:00', '16:00'),
+        closeStartTime: this.resolveTime(d.Close_Start_Time, '16:45', '13:00', '23:59'),
+        closeDeadline: this.resolveTime(d.Close_Deadline, '20:00', '15:00', '23:59'),
         isPrimary: idx === 0
       }));
     }
@@ -49,10 +57,10 @@ const Checklist = {
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type,
-        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
-        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
-        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
-        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
+        openStartTime: this.resolveTime(d.Open_Start_Time, '09:30', '06:00', '14:00'),
+        openDeadline: this.resolveTime(d.Open_Deadline, '10:30', '07:00', '16:00'),
+        closeStartTime: this.resolveTime(d.Close_Start_Time, '16:45', '13:00', '23:59'),
+        closeDeadline: this.resolveTime(d.Close_Deadline, '20:00', '15:00', '23:59'),
         isPrimary: d.Dept_ID === primaryDeptId
       }));
   },
@@ -70,10 +78,10 @@ const Checklist = {
         deptId: d.Dept_ID,
         deptName: d.Dept_Name,
         deptType: d.Dept_Type || 'STORE',
-        openStartTime: Utils.formatTime(d.Open_Start_Time) || '09:30',
-        openDeadline: Utils.formatTime(d.Open_Deadline) || '10:30',
-        closeStartTime: Utils.formatTime(d.Close_Start_Time) || '16:45',
-        closeDeadline: Utils.formatTime(d.Close_Deadline) || '20:00',
+        openStartTime: this.resolveTime(d.Open_Start_Time, '09:30', '06:00', '14:00'),
+        openDeadline: this.resolveTime(d.Open_Deadline, '10:30', '07:00', '16:00'),
+        closeStartTime: this.resolveTime(d.Close_Start_Time, '16:45', '13:00', '23:59'),
+        closeDeadline: this.resolveTime(d.Close_Deadline, '20:00', '15:00', '23:59'),
         sortOrder: parseInt(d.Sort_Order, 10) || 0,
         isActive: Boolean(d.Is_Active)
       }))
@@ -500,5 +508,209 @@ const Checklist = {
       holidays: holidayMap,
       items: matrixItems
     };
+  },
+
+  /**
+   * 管理員取得特定站點與時段之所有點檢項目 (含啟用與停用中)
+   */
+  adminGetChecklistItems: function(deptId, stage, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可維護點檢項目' };
+    }
+    const cleanDept = String(deptId || '1F').trim().toUpperCase();
+    const cleanStage = String(stage || 'OPEN').trim().toUpperCase();
+
+    const allItems = Utils.sheetToObjects('Check_Items');
+    const items = allItems.filter(item => {
+      const matchDept = String(item.Dept_ID).trim().toUpperCase() === cleanDept;
+      const matchStage = String(item.Stage).trim().toUpperCase() === cleanStage;
+      return matchDept && matchStage;
+    });
+
+    items.sort((a, b) => (parseInt(a.Sort_Order, 10) || 0) - (parseInt(b.Sort_Order, 10) || 0));
+
+    return {
+      success: true,
+      deptId: cleanDept,
+      stage: cleanStage,
+      count: items.length,
+      items: items.map(item => ({
+        itemId: item.Item_ID,
+        deptId: item.Dept_ID,
+        stage: item.Stage,
+        category: item.Category || '一般項目',
+        title: item.Title || '',
+        itemType: item.Item_Type || 'CHECK',
+        frequency: item.Frequency || 'DAILY',
+        sortOrder: parseInt(item.Sort_Order, 10) || 10,
+        isActive: Boolean(item.Is_Active === true || String(item.Is_Active).toUpperCase() === 'TRUE')
+      }))
+    };
+  },
+
+  /**
+   * 管理員儲存點檢項目 (新增或更新)
+   */
+  adminSaveChecklistItem: function(payload, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可儲存點檢項目' };
+    }
+    if (!payload || !payload.deptId || !payload.title) {
+      return { success: false, error: '缺少站點或題目名稱' };
+    }
+
+    const sheet = Utils.getSheet('Check_Items');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    const idCol = headers.indexOf('Item_ID');
+    const deptCol = headers.indexOf('Dept_ID');
+    const stageCol = headers.indexOf('Stage');
+    const catCol = headers.indexOf('Category');
+    const titleCol = headers.indexOf('Title');
+    const typeCol = headers.indexOf('Item_Type');
+    const freqCol = headers.indexOf('Frequency');
+    const sortCol = headers.indexOf('Sort_Order');
+    const activeCol = headers.indexOf('Is_Active');
+
+    const cleanDept = String(payload.deptId).trim().toUpperCase();
+    const cleanStage = String(payload.stage || 'OPEN').trim().toUpperCase();
+    const cleanCategory = String(payload.category || '一般項目').trim();
+    const cleanTitle = String(payload.title).trim();
+    const cleanFreq = String(payload.frequency || 'DAILY').trim().toUpperCase();
+    const sortOrder = parseInt(payload.sortOrder, 10) || 10;
+    const isActive = payload.isActive !== false;
+
+    // 若有 itemId 則為更新，否則新增
+    if (payload.itemId) {
+      const cleanItemId = String(payload.itemId).trim();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][idCol]).trim() === cleanItemId) {
+          if (deptCol !== -1) sheet.getRange(i + 1, deptCol + 1).setValue(cleanDept);
+          if (stageCol !== -1) sheet.getRange(i + 1, stageCol + 1).setValue(cleanStage);
+          if (catCol !== -1) sheet.getRange(i + 1, catCol + 1).setValue(cleanCategory);
+          if (titleCol !== -1) sheet.getRange(i + 1, titleCol + 1).setValue(cleanTitle);
+          if (typeCol !== -1) sheet.getRange(i + 1, typeCol + 1).setValue(payload.itemType || 'CHECK');
+          if (freqCol !== -1) sheet.getRange(i + 1, freqCol + 1).setValue(cleanFreq);
+          if (sortCol !== -1) sheet.getRange(i + 1, sortCol + 1).setValue(sortOrder);
+          if (activeCol !== -1) sheet.getRange(i + 1, activeCol + 1).setValue(isActive);
+
+          return { success: true, message: `點檢項目 [${cleanTitle}] 已更新成功` };
+        }
+      }
+    }
+
+    // 新增項目
+    const newItemId = `ITM-${Date.now().toString().slice(-6)}`;
+    const newRow = new Array(headers.length).fill('');
+    if (idCol !== -1) newRow[idCol] = newItemId;
+    if (deptCol !== -1) newRow[deptCol] = cleanDept;
+    if (stageCol !== -1) newRow[stageCol] = cleanStage;
+    if (catCol !== -1) newRow[catCol] = cleanCategory;
+    if (titleCol !== -1) newRow[titleCol] = cleanTitle;
+    if (typeCol !== -1) newRow[typeCol] = payload.itemType || 'CHECK';
+    if (freqCol !== -1) newRow[freqCol] = cleanFreq;
+    if (sortCol !== -1) newRow[sortCol] = sortOrder;
+    if (activeCol !== -1) newRow[activeCol] = isActive;
+
+    sheet.appendRow(newRow);
+    return { success: true, message: `已成功新增點檢項目 [${cleanTitle}]`, itemId: newItemId };
+  },
+
+  /**
+   * 管理員切換點檢項目啟用/停用
+   */
+  adminToggleItemStatus: function(itemId, isActive, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可修改項目狀態' };
+    }
+    const cleanItemId = String(itemId).trim();
+    const sheet = Utils.getSheet('Check_Items');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idCol = headers.indexOf('Item_ID');
+    const activeCol = headers.indexOf('Is_Active');
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]).trim() === cleanItemId) {
+        sheet.getRange(i + 1, activeCol + 1).setValue(Boolean(isActive));
+        return { success: true, message: `項目狀態已切換為 ${isActive ? '啟用' : '停用'}` };
+      }
+    }
+    return { success: false, error: '找不到該點檢項目' };
+  },
+
+  /**
+   * 管理員刪除點檢項目
+   */
+  adminDeleteItem: function(itemId, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可刪除項目' };
+    }
+    const cleanItemId = String(itemId).trim();
+    const sheet = Utils.getSheet('Check_Items');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idCol = headers.indexOf('Item_ID');
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][idCol]).trim() === cleanItemId) {
+        sheet.deleteRow(i + 1);
+        return { success: true, message: '點檢項目已成功刪除' };
+      }
+    }
+    return { success: false, error: '找不到該點檢項目' };
+  },
+
+  /**
+   * 管理員更新項目排序
+   */
+  adminUpdateItemSort: function(orderedItemIds, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可調整排序' };
+    }
+    if (!Array.isArray(orderedItemIds) || orderedItemIds.length === 0) {
+      return { success: false, error: '缺少排序清單' };
+    }
+    const sheet = Utils.getSheet('Check_Items');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idCol = headers.indexOf('Item_ID');
+    const sortCol = headers.indexOf('Sort_Order');
+
+    orderedItemIds.forEach((itemId, idx) => {
+      const cleanId = String(itemId).trim();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][idCol]).trim() === cleanId) {
+          sheet.getRange(i + 1, sortCol + 1).setValue((idx + 1) * 10);
+          break;
+        }
+      }
+    });
+
+    return { success: true, message: '項目順序更新成功' };
+  },
+
+  /**
+   * 管理維護：清除指定誤送的日誌 (如 10/14 誤送的閉店紀錄)
+   */
+  removeAuditLog: function(logId, currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可操作' };
+    }
+    const cleanLogId = String(logId).trim();
+    const sheet = Utils.getSheet('Audit_Logs');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const idCol = headers.indexOf('Log_ID');
+
+    let deleted = false;
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][idCol]).trim() === cleanLogId) {
+        sheet.deleteRow(i + 1);
+        deleted = true;
+      }
+    }
+    return { success: deleted, message: deleted ? `已成功清除日誌 [${cleanLogId}]` : '查無該日誌' };
   }
 };

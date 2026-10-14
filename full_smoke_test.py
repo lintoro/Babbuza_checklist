@@ -5,7 +5,23 @@ import sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-URL = 'https://script.google.com/macros/s/AKfycbyLvlKday_Z8Dz-GD5mQoRjuYmYVOESyCK5s_k6ZCYrtzMA2OqqP5IiMhwZoqiUrfGm/exec'
+import os
+import re
+
+# 動態從本地 .env 或環境變數讀取後端 URL，避免機敏字串外洩至儲存庫
+URL = os.environ.get('WEB_APP_URL') or os.environ.get('VITE_WEB_APP_URL')
+
+if not URL and os.path.exists('.env'):
+    with open('.env', 'r', encoding='utf-8') as f:
+        for line in f:
+            m = re.match(r'^(?:WEB_APP_URL|VITE_WEB_APP_URL)\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
+            if m:
+                URL = m.group(1).strip()
+                break
+
+if not URL:
+    print('❌ [錯誤] 未偵測到 WEB_APP_URL。請在環境變數或本地 .env 檔案中指定後端 Web App 網址。')
+    sys.exit(1)
 
 def post(payload):
     data = json.dumps(payload).encode('utf-8')

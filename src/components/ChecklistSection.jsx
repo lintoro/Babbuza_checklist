@@ -33,8 +33,23 @@ export default function ChecklistSection({
     ? (currentDeptInfo?.openDeadline || '10:30')
     : (currentDeptInfo?.closeDeadline || '20:00');
 
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // 取得當前台北時間分鐘數
+  const getTaipeiMinutes = () => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Taipei',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date()).split(':');
+      return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } catch {
+      const now = new Date();
+      return now.getHours() * 60 + now.getMinutes();
+    }
+  };
+
+  const currentMinutes = getTaipeiMinutes();
   const [startH, startM] = (startTime || '09:30').split(':').map(Number);
   const startMinutes = (startH || 0) * 60 + (startM || 0);
   const isNotOpenYet = currentMinutes < startMinutes;

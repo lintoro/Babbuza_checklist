@@ -204,21 +204,62 @@ const Utils = {
 
   /**
    * 格式化純時間 HH:mm (台北時區)
+   * 嚴格禁止以當前時間作為預設值，空值嚴格回傳空字串
    */
-  formatTime: function(val = new Date()) {
-    if (!val) return '';
+  formatTime: function(val) {
+    if (!val || val === '') return '';
     if (typeof val === 'string') {
-      if (val.indexOf('T') !== -1) {
-        val = new Date(val);
-      } else {
-        const match = val.match(/(\d{1,2}:\d{2})/);
-        return match ? match[1] : val;
+      const match = val.match(/(\d{1,2}:\d{2})/);
+      if (match) {
+        const parts = match[1].split(':');
+        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
       }
+      return val.trim();
     }
     if (val instanceof Date) {
+      // 處理 Google Sheets 1899 年純時間儲存格時區偏移問題
+      if (val.getFullYear() <= 1900) {
+        const h = String(val.getHours()).padStart(2, '0');
+        const m = String(val.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      }
       return Utilities.formatDate(val, 'Asia/Taipei', 'HH:mm');
     }
     return String(val);
+  },
+
+  /**
+   * 取得當前台北時間 HH:mm (純字串比對用)
+   */
+  getCurrentTaipeiTime: function() {
+    return Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm');
+  },
+
+  /**
+   * 批次正規化 Departments 表格的時間為純字串，避免 Google Sheets Date 格式時區偏移
+   */
+  normalizeDepartmentTimes: function() {
+    try {
+      const sheet = this.getSheet('Departments');
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(h => String(h).trim());
+
+      const openStartCol = headers.indexOf('Open_Start_Time');
+      const openDeadCol = headers.indexOf('Open_Deadline');
+      const closeStartCol = headers.indexOf('Close_Start_Time');
+      const closeDeadCol = headers.indexOf('Close_Deadline');
+
+      if (openStartCol === -1 || closeStartCol === -1) return;
+
+      for (let i = 1; i < data.length; i++) {
+        sheet.getRange(i + 1, openStartCol + 1).setNumberFormat('@').setValue('09:30');
+        sheet.getRange(i + 1, openDeadCol + 1).setNumberFormat('@').setValue('10:30');
+        sheet.getRange(i + 1, closeStartCol + 1).setNumberFormat('@').setValue('16:45');
+        sheet.getRange(i + 1, closeDeadCol + 1).setNumberFormat('@').setValue('20:00');
+      }
+    } catch (e) {
+      console.warn('normalizeDepartmentTimes error:', e);
+    }
   },
 
   /**

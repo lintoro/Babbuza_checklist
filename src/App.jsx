@@ -12,7 +12,8 @@ import AdminUsersView from './components/AdminUsersView';
 import AdminStationsView from './components/AdminStationsView';
 import AdminReportsView from './components/AdminReportsView';
 import AdminWarRoomView from './components/AdminWarRoomView';
-import { Loader2, AlertCircle, RefreshCw, Users, Store, FileText, LayoutGrid } from 'lucide-react';
+import AdminChecklistItemsView from './components/AdminChecklistItemsView';
+import { Loader2, AlertCircle, RefreshCw, Users, Store, FileText, LayoutGrid, ListChecks } from 'lucide-react';
 
 export default function App() {
   const { user, token, departments, loading: authLoading, mustChangePwdModal, setMustChangePwdModal } = useAuth();
@@ -275,15 +276,15 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setAdminTab('users')}
+                onClick={() => setAdminTab('items')}
                 className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
-                  adminTab === 'users'
+                  adminTab === 'items'
                     ? 'bg-purple-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <Users className="w-3.5 h-3.5" />
-                <span>人員名冊</span>
+                <ListChecks className="w-3.5 h-3.5" />
+                <span>點檢項目</span>
               </button>
 
               <button
@@ -297,6 +298,19 @@ export default function App() {
               >
                 <Store className="w-3.5 h-3.5" />
                 <span>站點規格</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminTab('users')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+                  adminTab === 'users'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>人員名冊</span>
               </button>
 
               <button
@@ -316,10 +330,12 @@ export default function App() {
             {/* 根據頁籤渲染對應元件 */}
             {adminTab === 'warroom' ? (
               <AdminWarRoomView />
-            ) : adminTab === 'users' ? (
-              <AdminUsersView />
+            ) : adminTab === 'items' ? (
+              <AdminChecklistItemsView />
             ) : adminTab === 'stations' ? (
               <AdminStationsView />
+            ) : adminTab === 'users' ? (
+              <AdminUsersView />
             ) : (
               <AdminReportsView />
             )}

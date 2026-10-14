@@ -43,21 +43,19 @@ const Audit = {
       }
     }
 
-    // 2. 開始時間與截止時間判定 (後端防護)
+    // 2. 開始時間與截止時間判定 (後端嚴格防護)
     const depts = Utils.sheetToObjects('Departments');
     const dept = depts.find(d => String(d.Dept_ID).trim().toUpperCase() === deptId);
-    let startTimeStr = stage === 'OPEN' ? (dept ? dept.Open_Start_Time : '09:30') : (dept ? dept.Close_Start_Time : '16:45');
-    let deadlineStr = stage === 'OPEN' ? (dept ? dept.Open_Deadline : '10:30') : (dept ? dept.Close_Deadline : '20:00');
-    if (startTimeStr instanceof Date) startTimeStr = Utils.formatTime(startTimeStr);
-    if (deadlineStr instanceof Date) deadlineStr = Utils.formatTime(deadlineStr);
-    startTimeStr = Utils.formatTime(startTimeStr) || (stage === 'OPEN' ? '09:30' : '16:45');
-    deadlineStr = Utils.formatTime(deadlineStr) || (stage === 'OPEN' ? '10:30' : '20:00');
+    let rawStart = stage === 'OPEN' ? (dept ? dept.Open_Start_Time : '') : (dept ? dept.Close_Start_Time : '');
+    let rawDead = stage === 'OPEN' ? (dept ? dept.Open_Deadline : '') : (dept ? dept.Close_Deadline : '');
+    let startTimeStr = Utils.formatTime(rawStart) || (stage === 'OPEN' ? '09:30' : '16:45');
+    let deadlineStr = Utils.formatTime(rawDead) || (stage === 'OPEN' ? '10:30' : '20:00');
 
-    const currentTimeStr = Utils.formatTime();
+    const currentTimeStr = Utils.getCurrentTaipeiTime();
     if (currentTimeStr < startTimeStr) {
       return {
         success: false,
-        error: `尚未到達開放回報時間！${stage === 'OPEN' ? '開店' : '閉店'}開放時間為 ${startTimeStr} ~ ${deadlineStr}`
+        error: `尚未到達開放回報時間！${stage === 'OPEN' ? '開店' : '閉店'}開放時間為 ${startTimeStr} ~ ${deadlineStr}（目前台北時間：${currentTimeStr}）`
       };
     }
     const isLate = currentTimeStr > deadlineStr;
