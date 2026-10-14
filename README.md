@@ -2,6 +2,12 @@
 
 本專案為商場/文創園區各站點（服務台、展區、自營門市櫃位、體驗組）之日常巡檢、開閉站檢核、異常回報與交接通報系統。
 
+> [!IMPORTANT]
+> ### 🔒 最高資安要求與交接第一道檢核關卡 (Security Gate 0)
+> 本專案受本機全域最高規則與 [`AGENTS.md`](file:///c:/Github/ReactApp/Babbuza_checklist/AGENTS.md) 嚴格約束，實施**零明文金鑰原則 (Zero Plaintext Secrets)**：
+> 1. **嚴禁推上任何金鑰與真實 ID**：儲存庫內嚴禁出現任何真實 Google Sheet ID、GAS 專案 ID、部署 URL 或密碼。
+> 2. **交接第一步全面檢查**：任何工程師或 AI 接手本專案，請先參閱 [`PROJECT_HANDOVER.md`](file:///c:/Github/ReactApp/Babbuza_checklist/PROJECT_HANDOVER.md) 之「第 0 章：資安全面清查確認關卡」，確認環境檔案未受追蹤且程式碼無機敏殘留。
+
 ---
 
 ## 📌 系統核心規格

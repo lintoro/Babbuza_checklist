@@ -2,9 +2,28 @@
 
 本手冊供後續維護、換機接手或 AI Agent 快速銜接專案。記錄了從原始各分頁試算表演進至標準化 WebApp 的核心架構、最新開發進度與異地開發指引。
 
-> [!IMPORTANT]
-> **資安宣告 (Zero-Secret Policy)**：
-> 為確保企業資料安全，本公開儲存庫落實「零明文金鑰原則」。本手冊所有連線 ID、URL、帳號及金鑰均以佔位符 `<...>` 表示。**真實金鑰與環境設定檔僅妥善保存於地端離線環境變數與實體交接隨身碟中，嚴禁推送到任何公開 Git 倉庫！**
+> [!CAUTION]
+> ### 🚨 第 0 章：交接與接手第一步：資安全面清查確認關卡 (Security Gate 0 - Mandatory Check)
+> **本專案實施最高等級「零明文金鑰原則 (Zero Plaintext Secrets)」。無論是換機接手、AI 代理人接管、或結案移交，執行任何指令或閱讀後續文件前，第一步必須執行資安全面檢核！**
+> 
+> #### 📋 移交／接手第一步強制檢核清單 (Handover Checkpoints)
+> 1. **檢查受控檔案名冊**：
+>    ```bash
+>    git ls-files | Select-String "^\.env"
+>    ```
+>    *合格標準：輸出僅允許有 `.env.example`。若出現 `.env` 或 `.env.production` 等真實檔案，嚴禁推送並立即通報！*
+> 2. **清查程式碼與文件明文金鑰**：
+>    ```bash
+>    git grep -i "script.google.com/macros/s/AKfy"
+>    ```
+>    *合格標準：返回值為 0 匹配（Code 1）。程式碼與手冊中絕對嚴禁寫死真實部署 URL。*
+> 3. **確認 Git 追蹤狀態**：
+>    ```bash
+>    git status
+>    ```
+>    *合格標準：確認未追蹤任何 `.clasp.json`、憑證檔或含有密碼的金鑰檔。*
+> 4. **實體離線交接確認**：
+>    *生產環境的實際 `SPREADSHEET_ID`、`SCRIPT_ID` 與 `WEB_APP_URL`，僅能自離線實體隨身碟複製到本機 `.env`，嚴禁推送到任何公開儲存庫！*
 
 ---
 
