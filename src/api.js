@@ -72,6 +72,7 @@ export async function apiPost(payload = {}) {
   if (!data.success && data.error) {
     throw new Error(data.error);
   }
+  return data;
 }
 
 /**
