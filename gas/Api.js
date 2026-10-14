@@ -26,9 +26,15 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, auth.error);
         }
+        const userObj = Utils.sheetToObjects('Users').find(u => String(u.User_ID).trim().toUpperCase() === auth.user.userId.toUpperCase());
         const depts = Checklist.getUserDepartments(auth.user.userId, auth.user.role);
         return Utils.jsonResponse({
-          user: auth.user,
+          user: userObj ? {
+            userId: userObj.User_ID,
+            name: userObj.Name,
+            role: userObj.Role,
+            mustChangePwd: Boolean(userObj.Must_Change_Pwd === true || String(userObj.Must_Change_Pwd).toUpperCase() === 'TRUE')
+          } : auth.user,
           departments: depts
         });
       }

@@ -2,16 +2,20 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, Lock, UserCheck, AlertCircle, Loader2 } from 'lucide-react';
 
+const STORAGE_KEY_REMEMBER = 'babbuza_remembered_userId';
+
 export default function LoginModal() {
   const { login } = useAuth();
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState(() => localStorage.getItem(STORAGE_KEY_REMEMBER) || '');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem(STORAGE_KEY_REMEMBER) !== null ? localStorage.getItem(STORAGE_KEY_REMEMBER) : true));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!userId.trim()) {
+    const cleanId = userId.trim().toUpperCase();
+    if (!cleanId) {
       setError('請輸入員工編號（工號）');
       return;
     }
@@ -20,10 +24,16 @@ export default function LoginModal() {
       return;
     }
 
+    if (rememberMe) {
+      localStorage.setItem(STORAGE_KEY_REMEMBER, cleanId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_REMEMBER);
+    }
+
     setError('');
     setLoading(true);
     try {
-      const res = await login(userId.trim().toUpperCase(), password);
+      const res = await login(cleanId, password);
       if (!res.success) {
         setError(res.error || '登入失敗，請確認工號與密碼');
       }
@@ -90,6 +100,19 @@ export default function LoginModal() {
               />
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             </div>
+          </div>
+
+          {/* 記住帳號勾選框 */}
+          <div className="flex items-center justify-between text-xs pt-0.5">
+            <label className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 text-brand-600 rounded-sm border-slate-300 focus:ring-brand-500 cursor-pointer"
+              />
+              <span className="font-medium text-slate-700">記住員工工號（下次免重複輸入）</span>
+            </label>
           </div>
 
           <div className="pt-2">

@@ -66,6 +66,7 @@ export default function App() {
     try {
       const res = await apiGet({
         action: 'get_checklist',
+        token,
         deptId,
         stage: currentStage,
       });
@@ -95,6 +96,7 @@ export default function App() {
     try {
       const res = await apiGet({
         action: 'get_handover',
+        token,
         deptId,
       });
       if (res.success && res.data) {

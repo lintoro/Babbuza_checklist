@@ -56,8 +56,14 @@ const Auth = {
     // 登入成功，更新最後登入時間
     const sheet = Utils.getSheet('Users');
     const rowIndex = user._rowIndex;
-    // 假設 Headers: User_ID(1), Name(2), Role(3), Password_Hash(4), Salt(5), Must_Change_Pwd(6), Token_Version(7), Status(8), Last_Login(9)
+    const isUsingDefault = (cleanPwd === '000000');
+    const shouldForceChange = isUsingDefault || !hasExistingHash || Boolean(user.Must_Change_Pwd === true || String(user.Must_Change_Pwd).toUpperCase() === 'TRUE');
+
+    // Headers: User_ID(1), Name(2), Role(3), Password_Hash(4), Salt(5), Must_Change_Pwd(6), Token_Version(7), Status(8), Last_Login(9)
     sheet.getRange(rowIndex, 9).setValue(Utils.formatDateTime());
+    if (shouldForceChange) {
+      sheet.getRange(rowIndex, 6).setValue(true); // 強制下次/當前必須修改密碼
+    }
 
     // 簽發 Token
     const tokenVersion = parseInt(user.Token_Version, 10) || 1;
@@ -70,7 +76,7 @@ const Auth = {
         userId: user.User_ID,
         name: user.Name,
         role: user.Role,
-        mustChangePwd: Boolean(user.Must_Change_Pwd) || !hasExistingHash
+        mustChangePwd: shouldForceChange
       }
     };
   },
