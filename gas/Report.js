@@ -263,11 +263,13 @@ const Report = {
  * 全域 Trigger 執行函式
  */
 function triggerOpenReport() {
+  try { Handover.autoArchiveExpiredHandovers(3); } catch (e) {}
   const res = Report.generateSummaryReport('OPEN');
   console.log('【定時排程】開店巡檢總結報表產出完成：\n' + res.reportText);
 }
 
 function triggerCloseReport() {
+  try { Handover.autoArchiveExpiredHandovers(3); } catch (e) {}
   const res = Report.generateSummaryReport('CLOSE');
   console.log('【定時排程】閉店巡檢總結報表產出完成：\n' + res.reportText);
 }

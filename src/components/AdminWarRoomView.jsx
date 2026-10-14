@@ -122,6 +122,7 @@ export default function AdminWarRoomView() {
   // 2. 未結案異常集中看板狀態
   const [issuesData, setIssuesData] = useState(null);
   const [loadingIssues, setLoadingIssues] = useState(false);
+  const [issueSubTab, setIssueSubTab] = useState('DEFECT'); // 'DEFECT' (設備報修) 或 'HANDOVER' (交接備忘)
   const [resolvingNote, setResolvingNote] = useState(null);
   const [resolutionText, setResolutionText] = useState('');
   const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
@@ -129,6 +130,7 @@ export default function AdminWarRoomView() {
   // 3. 已結案歷史紀錄狀態
   const [resolvedData, setResolvedData] = useState(null);
   const [loadingResolved, setLoadingResolved] = useState(false);
+  const [resolvedSubTab, setResolvedSubTab] = useState('DEFECT'); // 'DEFECT' (設備報修) 或 'HANDOVER' (交接備忘)
 
   // 載入站點清單
   const loadDepts = async () => {
@@ -633,75 +635,140 @@ export default function AdminWarRoomView() {
               <p className="text-emerald-700 text-[11px]">所有站點運作正常，設備皆維持良善狀態。</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
+              {/* 二級分類 Tab 切換：報修 / 交接 (進入預設鎖定報修) */}
+              <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setIssueSubTab('DEFECT')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    issueSubTab === 'DEFECT'
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>🚨 設備報修</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      issueSubTab === 'DEFECT'
+                        ? 'bg-red-700 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {issuesData.defectCount ?? issuesData.issues?.filter(n => n.type === 'DEFECT').length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIssueSubTab('HANDOVER')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    issueSubTab === 'HANDOVER'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>📋 現場交接</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      issueSubTab === 'HANDOVER'
+                        ? 'bg-blue-700 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {issuesData.handoverCount ?? issuesData.issues?.filter(n => n.type === 'HANDOVER').length}
+                  </span>
+                </button>
+              </div>
+
               <div className="text-[11px] text-slate-500 flex items-center justify-between">
                 <span>
-                  共 <b>{issuesData.totalOpen}</b> 則待處理項目（設備報修 {issuesData.defectCount} 則 / 現場交接 {issuesData.handoverCount} 則）
+                  {issueSubTab === 'DEFECT'
+                    ? `待處理設備報修共 ${issuesData.defectCount ?? issuesData.issues?.filter(n => n.type === 'DEFECT').length} 則`
+                    : `現場交接事項共 ${issuesData.handoverCount ?? issuesData.issues?.filter(n => n.type === 'HANDOVER').length} 則（逾 3 日未核銷將自動結案封存）`}
                 </span>
                 <span className="text-slate-400">全員皆可核銷結案</span>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                {issuesData.issues.map((issue) => (
-                  <div
-                    key={issue.noteId}
-                    className="p-4 rounded-xl border bg-white border-slate-200/90 shadow-xs space-y-2.5 hover:border-slate-300 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {/* 站點名稱標籤 */}
-                        <span className="text-xs font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200">
-                          {issue.deptName}
-                        </span>
-
-                        {/* 類型標籤 */}
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                            issue.type === 'DEFECT'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}
-                        >
-                          {issue.type === 'DEFECT' ? '設備報修' : '交接備忘'}
-                        </span>
-
-                        {/* 累積天數警示 */}
-                        {issue.pendingDays > 0 ? (
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md flex items-center space-x-1">
-                            <Clock className="w-3 h-3" />
-                            <span>已待處理 {issue.pendingDays} 天</span>
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400">今日提報</span>
-                        )}
-                      </div>
-
-                      {/* 全員核銷結案按鈕 */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setResolvingNote(issue);
-                          setResolutionText('');
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+              {issuesData.issues.filter((n) => n.type === issueSubTab).length === 0 ? (
+                <div className="py-12 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-200/60 text-slate-500 text-xs">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto" />
+                  <p className="font-bold text-slate-700">
+                    {issueSubTab === 'DEFECT'
+                      ? '目前無任何未結案之設備報修項目！'
+                      : '目前無列管中之現場交接備忘！'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {issueSubTab === 'DEFECT'
+                      ? '所有站點設備運作正常。'
+                      : '交接備忘若超過 3 日未核銷，系統已自動收入結案歷史。'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {issuesData.issues
+                    .filter((issue) => issue.type === issueSubTab)
+                    .map((issue) => (
+                      <div
+                        key={issue.noteId}
+                        className="p-4 rounded-xl border bg-white border-slate-200/90 shadow-xs space-y-2.5 hover:border-slate-300 transition-colors"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>結案核銷</span>
-                      </button>
-                    </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            {/* 站點名稱標籤 */}
+                            <span className="text-xs font-bold text-slate-900 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200">
+                              {issue.deptName}
+                            </span>
 
-                    {/* 異常內容描述 */}
-                    <p className="text-xs text-slate-800 leading-relaxed font-normal bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                      {issue.content}
-                    </p>
+                            {/* 類型標籤 */}
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                issue.type === 'DEFECT'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}
+                            >
+                              {issue.type === 'DEFECT' ? '設備報修' : '交接備忘'}
+                            </span>
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                      <span>提報人員：{issue.reporterName || issue.reporterId}</span>
-                      <span>提報時間：{issue.createdAt}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                            {/* 累積天數警示 */}
+                            {issue.pendingDays > 0 ? (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md flex items-center space-x-1">
+                                <Clock className="w-3 h-3" />
+                                <span>已待處理 {issue.pendingDays} 天</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">今日提報</span>
+                            )}
+                          </div>
+
+                          {/* 全員核銷結案按鈕 */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResolvingNote(issue);
+                              setResolutionText('');
+                            }}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>結案核銷</span>
+                          </button>
+                        </div>
+
+                        {/* 異常內容描述 */}
+                        <p className="text-xs text-slate-800 leading-relaxed font-normal bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                          {issue.content}
+                        </p>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                          <span>提報人員：{issue.reporterName || issue.reporterId}</span>
+                          <span>提報時間：{issue.createdAt}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -745,49 +812,106 @@ export default function AdminWarRoomView() {
               目前尚無已結案之歷史資料
             </div>
           ) : (
-            <div className="space-y-3">
-              <p className="text-[11px] text-slate-500">
-                共列出最近 <b>{resolvedData.records.length}</b> 筆結案歷程紀錄
-              </p>
-
-              <div className="grid grid-cols-1 gap-2.5">
-                {resolvedData.records.map((rec) => (
-                  <div
-                    key={rec.noteId}
-                    className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/90 space-y-2 text-xs"
+            <div className="space-y-3.5">
+              {/* 二級分類 Tab 切換：報修 / 交接 (進入預設鎖定報修) */}
+              <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setResolvedSubTab('DEFECT')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    resolvedSubTab === 'DEFECT'
+                      ? 'bg-purple-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>🔧 設備報修紀錄</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      resolvedSubTab === 'DEFECT'
+                        ? 'bg-purple-800 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-slate-900">{rec.deptName}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
-                          {rec.type === 'DEFECT' ? '設備報修' : '交接備忘'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {rec.bizDate}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
-                        已核銷結案
-                      </span>
-                    </div>
+                    {(resolvedData.records || []).filter((r) => r.type === 'DEFECT').length}
+                  </span>
+                </button>
 
-                    <p className="text-slate-700 leading-relaxed font-medium">
-                      {rec.content}
-                    </p>
-
-                    <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-[11px] text-emerald-950 space-y-1">
-                      <div className="font-bold flex items-center space-x-1.5">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>處理說明：{rec.resolution}</span>
-                      </div>
-                      <div className="text-[10px] text-emerald-800 flex items-center justify-between pt-0.5 border-t border-emerald-100">
-                        <span>核銷人員：<b>{rec.resolvedBy}</b></span>
-                        <span>結案時間：{rec.resolvedAt}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => setResolvedSubTab('HANDOVER')}
+                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    resolvedSubTab === 'HANDOVER'
+                      ? 'bg-purple-700 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>📋 現場交接紀錄</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      resolvedSubTab === 'HANDOVER'
+                        ? 'bg-purple-800 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {(resolvedData.records || []).filter((r) => r.type === 'HANDOVER').length}
+                  </span>
+                </button>
               </div>
+
+              <div className="text-[11px] text-slate-500">
+                {resolvedSubTab === 'DEFECT'
+                  ? `已結案之設備報修歷程共 ${(resolvedData.records || []).filter((r) => r.type === 'DEFECT').length} 筆`
+                  : `已結案之現場交接歷程共 ${(resolvedData.records || []).filter((r) => r.type === 'HANDOVER').length} 筆（含逾 3 日系統自動結案備忘）`}
+              </div>
+
+              {(resolvedData.records || []).filter((r) => r.type === resolvedSubTab).length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-200/60">
+                  {resolvedSubTab === 'DEFECT'
+                    ? '目前尚無已結案之設備報修歷史紀錄'
+                    : '目前尚無已結案之現場交接歷史紀錄'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5">
+                  {(resolvedData.records || [])
+                    .filter((r) => r.type === resolvedSubTab)
+                    .map((rec) => (
+                      <div
+                        key={rec.noteId}
+                        className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/90 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-slate-900">{rec.deptName}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">
+                              {rec.type === 'DEFECT' ? '設備報修' : '交接備忘'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {rec.bizDate}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                            已核銷結案
+                          </span>
+                        </div>
+
+                        <p className="text-slate-700 leading-relaxed font-medium">
+                          {rec.content}
+                        </p>
+
+                        <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-[11px] text-emerald-950 space-y-1">
+                          <div className="font-bold flex items-center space-x-1.5">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>處理說明：{rec.resolution}</span>
+                          </div>
+                          <div className="text-[10px] text-emerald-800 flex items-center justify-between pt-0.5 border-t border-emerald-100">
+                            <span>核銷人員：<b>{rec.resolvedBy}</b></span>
+                            <span>結案時間：{rec.resolvedAt}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -826,10 +950,9 @@ export default function AdminWarRoomView() {
                 <textarea
                   value={resolutionText}
                   onChange={(e) => setResolutionText(e.target.value)}
-                  placeholder="請填寫處理情形（例如：已更換設備耗材、已報修總務修畢、已完成零找金補齊）..."
+                  placeholder="處理說明（非必填，空白將自動預設為「已確認處理完成」）..."
                   rows={3}
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                  required
                 />
               </div>
 

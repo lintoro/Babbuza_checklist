@@ -125,9 +125,50 @@ const Handover = {
   },
 
   /**
+   * 自動核銷逾期交接備忘 (超過指定天數，預設 3 天未結案之交接項目自動結案)
+   * @param {number} days - 逾期天數，預設 3
+   */
+  autoArchiveExpiredHandovers: function(days) {
+    try {
+      const expireDays = typeof days === 'number' ? days : 3;
+      const sheet = Utils.getSheet('Handover_Notes');
+      const allNotes = Utils.sheetToObjects('Handover_Notes');
+      const now = Date.now();
+      const expireMs = expireDays * 24 * 60 * 60 * 1000;
+      const nowTime = Utils.formatDateTime();
+      let archivedCount = 0;
+
+      allNotes.forEach(note => {
+        const isHandover = String(note.Type).trim().toUpperCase() === 'HANDOVER';
+        const isOpen = String(note.Status).trim().toUpperCase() === 'OPEN';
+        if (!isHandover || !isOpen) return;
+
+        const createTime = new Date(note.Created_At).getTime();
+        if (!createTime || isNaN(createTime)) return;
+
+        if (now - createTime >= expireMs) {
+          const rowIndex = note._rowIndex;
+          sheet.getRange(rowIndex, 10).setValue('RESOLVED');
+          sheet.getRange(rowIndex, 11).setValue('系統自動核銷（交接逾3日無異常）');
+          sheet.getRange(rowIndex, 12).setValue('系統自動核銷');
+          sheet.getRange(rowIndex, 13).setValue(nowTime);
+          archivedCount++;
+        }
+      });
+      return archivedCount;
+    } catch (e) {
+      console.warn('autoArchiveExpiredHandovers error:', e);
+      return 0;
+    }
+  },
+
+  /**
    * 取得全商場所有未結案異常與備忘 (供戰情報表集中看板使用，直到被解決才移除)
    */
   getAllOpenIssues: function() {
+    // 查詢前先自動歸檔超過 3 日未核銷之交接備忘
+    this.autoArchiveExpiredHandovers(3);
+
     const allNotes = Utils.sheetToObjects('Handover_Notes');
     const allDepts = Utils.sheetToObjects('Departments');
     const allUsers = Utils.sheetToObjects('Users');
