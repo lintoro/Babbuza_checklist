@@ -33,9 +33,10 @@ const Auth = {
     // 密碼比對邏輯
     let isPasswordCorrect = false;
     const hasExistingHash = Boolean(user.Password_Hash && String(user.Password_Hash).trim() !== '');
+    const isMustChangeMarked = Boolean(user.Must_Change_Pwd === true || String(user.Must_Change_Pwd).toUpperCase() === 'TRUE');
 
     if (!hasExistingHash) {
-      // 統一標準：首次登入預設密碼一律為 '000000'
+      // 尚未設定密碼：允許使用預設密碼 000000 登入
       if (cleanPwd === '000000') {
         isPasswordCorrect = true;
       }
@@ -43,8 +44,8 @@ const Auth = {
       const computedHash = Utils.sha256(cleanPwd, user.Salt || '');
       if (computedHash === String(user.Password_Hash).trim()) {
         isPasswordCorrect = true;
-      } else if (cleanPwd === '000000' && (user.Must_Change_Pwd || cleanUserId === 'B111155')) {
-        // 若試算表中殘留未對齊之舊 hash，但輸入預設密碼 000000，允許初始化登入並強制修改
+      } else if (cleanPwd === '000000' && isMustChangeMarked) {
+        // 僅在被管理員重設且標記為需改密時，允許以 000000 登入
         isPasswordCorrect = true;
       }
     }
@@ -57,7 +58,18 @@ const Auth = {
     const sheet = Utils.getSheet('Users');
     const rowIndex = user._rowIndex;
     const isUsingDefault = (cleanPwd === '000000');
-    const shouldForceChange = isUsingDefault || !hasExistingHash || Boolean(user.Must_Change_Pwd === true || String(user.Must_Change_Pwd).toUpperCase() === 'TRUE');
+    
+    // 判定是否需要強制修改密碼：
+    // 只有在「使用預設密碼 000000」或「尚未有密碼雜湊」時才強制修改！
+    // 若使用者輸入的是自己設定的新密碼且雜湊相符，則絕不強制改密，並自動解除 Must_Change_Pwd 標記
+    let shouldForceChange = false;
+    if (isUsingDefault || !hasExistingHash) {
+      shouldForceChange = true;
+    } else if (isMustChangeMarked) {
+      // 使用者已使用自訂密碼驗證通過，自動消除殘留的 Must_Change_Pwd 標記
+      sheet.getRange(rowIndex, 6).setValue(false);
+      shouldForceChange = false;
+    }
 
     // Headers: User_ID(1), Name(2), Role(3), Password_Hash(4), Salt(5), Must_Change_Pwd(6), Token_Version(7), Status(8), Last_Login(9)
     sheet.getRange(rowIndex, 9).setValue(Utils.formatDateTime());

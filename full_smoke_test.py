@@ -56,8 +56,11 @@ res_health = get('action=health')
 health_data = res_health.get('data') or {}
 assert_test('後端健康檢查 (Health Check)', res_health.get('success') and health_data.get('status') == 'UP', f"狀態: {health_data.get('status')}")
 
-# 2. 管理員 B111155 登入
-res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '000000'})
+# 2. 管理員 B111155 登入 (支援自訂密碼與預設密碼相容驗收)
+admin_pwd = os.environ.get('ADMIN_PASSWORD') or '111155'
+res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': admin_pwd})
+if not res_login_admin.get('success'):
+    res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '000000'})
 admin_data = res_login_admin.get('data') or {}
 admin_token = admin_data.get('token')
 admin_role = (admin_data.get('user') or {}).get('role')
