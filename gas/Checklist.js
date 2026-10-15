@@ -331,9 +331,11 @@ const Checklist = {
     const logs = Utils.sheetToObjects('Audit_Logs').filter(l => {
       let bDate = l.Biz_Date;
       if (bDate instanceof Date) bDate = Utils.formatDate(bDate);
+      const isTestLog = Boolean(l.Is_Test) || String(l.Client_Key || '').toUpperCase().startsWith('TEST-');
       return String(bDate).trim() === targetDate &&
              String(l.Dept_ID).trim().toUpperCase() === cleanDept &&
-             Boolean(l.Is_Current);
+             Boolean(l.Is_Current) &&
+             !isTestLog; // 排除測試沙盒紀錄
     });
 
     const openLog = logs.find(l => l.Stage === 'OPEN');
@@ -346,7 +348,7 @@ const Checklist = {
         isSubmitted: true,
         logId: openLog.Log_ID,
         executorName: openLog.Executor_Name,
-        submitTime: openLog.Submit_Time,
+        submitTime: Utils.formatTime(openLog.Submit_Time),
         isLate: Boolean(openLog.Is_Late),
         totalCount: openLog.Total_Count,
         okCount: openLog.OK_Count,
@@ -357,7 +359,7 @@ const Checklist = {
         isSubmitted: true,
         logId: closeLog.Log_ID,
         executorName: closeLog.Executor_Name,
-        submitTime: closeLog.Submit_Time,
+        submitTime: Utils.formatTime(closeLog.Submit_Time),
         isLate: Boolean(closeLog.Is_Late),
         totalCount: closeLog.Total_Count,
         okCount: closeLog.OK_Count,
@@ -403,9 +405,11 @@ const Checklist = {
     const allLogs = Utils.sheetToObjects('Audit_Logs').filter(l => {
       let bDate = l.Biz_Date;
       if (bDate instanceof Date) bDate = Utils.formatDate(bDate);
+      const isTestLog = Boolean(l.Is_Test) || String(l.Client_Key || '').toUpperCase().startsWith('TEST-');
       return String(l.Dept_ID).trim().toUpperCase() === cleanDept &&
              String(l.Stage).trim().toUpperCase() === cleanStage &&
              Boolean(l.Is_Current) &&
+             !isTestLog && // 排除測試沙盒紀錄
              dates.includes(String(bDate).trim());
     });
 
@@ -692,25 +696,68 @@ const Checklist = {
   },
 
   /**
-   * 管理維護：清除指定誤送的日誌 (如 10/14 誤送的閉店紀錄)
+   * 管理維護：清除指定誤送或測試日誌 (支援 Audit_Logs、Audit_Details、Handover_Notes 三表連動物理銷毀)
    */
   removeAuditLog: function(logId, currentUser) {
     if (!currentUser || currentUser.role !== 'ADMIN') {
       return { success: false, error: '權限不足，僅系統管理員可操作' };
     }
     const cleanLogId = String(logId).trim();
-    const sheet = Utils.getSheet('Audit_Logs');
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0].map(h => String(h).trim());
-    const idCol = headers.indexOf('Log_ID');
+    if (!cleanLogId) {
+      return { success: false, error: '缺少 logId 參數' };
+    }
 
-    let deleted = false;
-    for (let i = data.length - 1; i >= 1; i--) {
-      if (String(data[i][idCol]).trim() === cleanLogId) {
-        sheet.deleteRow(i + 1);
-        deleted = true;
+    // 1. 物理刪除 Audit_Logs
+    const logsSheet = Utils.getSheet('Audit_Logs');
+    const logsData = logsSheet.getDataRange().getValues();
+    const logsHeaders = logsData[0].map(h => String(h).trim());
+    const logIdCol = logsHeaders.indexOf('Log_ID');
+
+    let deletedLog = false;
+    for (let i = logsData.length - 1; i >= 1; i--) {
+      if (String(logsData[i][logIdCol]).trim() === cleanLogId) {
+        logsSheet.deleteRow(i + 1);
+        deletedLog = true;
       }
     }
-    return { success: deleted, message: deleted ? `已成功清除日誌 [${cleanLogId}]` : '查無該日誌' };
+
+    // 2. 物理連動刪除 Audit_Details 快照
+    const detailsSheet = Utils.getSheet('Audit_Details');
+    const detailsData = detailsSheet.getDataRange().getValues();
+    const detailsHeaders = detailsData[0].map(h => String(h).trim());
+    const detailLogIdCol = detailsHeaders.indexOf('Log_ID');
+    let deletedDetailsCount = 0;
+    if (detailLogIdCol !== -1) {
+      for (let i = detailsData.length - 1; i >= 1; i--) {
+        if (String(detailsData[i][detailLogIdCol]).trim() === cleanLogId) {
+          detailsSheet.deleteRow(i + 1);
+          deletedDetailsCount++;
+        }
+      }
+    }
+
+    // 3. 物理連動刪除 Handover_Notes (若有建立)
+    const handoverSheet = Utils.getSheet('Handover_Notes');
+    const handoverData = handoverSheet.getDataRange().getValues();
+    const handoverHeaders = handoverData[0].map(h => String(h).trim());
+    const sourceLogCol = handoverHeaders.indexOf('Source_Log_ID');
+    let deletedHandoverCount = 0;
+    if (sourceLogCol !== -1) {
+      for (let i = handoverData.length - 1; i >= 1; i--) {
+        if (String(handoverData[i][sourceLogCol]).trim() === cleanLogId) {
+          handoverSheet.deleteRow(i + 1);
+          deletedHandoverCount++;
+        }
+      }
+    }
+
+    return {
+      success: deletedLog,
+      message: deletedLog
+        ? `已成功銷毀日誌 [${cleanLogId}]，連帶清除 ${deletedDetailsCount} 筆明細與 ${deletedHandoverCount} 筆交接事項`
+        : '查無該日誌',
+      deletedDetailsCount: deletedDetailsCount,
+      deletedHandoverCount: deletedHandoverCount
+    };
   }
 };

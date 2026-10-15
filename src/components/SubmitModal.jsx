@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Copy, Check, MessageSquare, X } from 'lucide-react';
+import { CheckCircle2, Copy, Check, MessageSquare, X, AlertTriangle } from 'lucide-react';
 
 export default function SubmitModal({ isOpen, onClose, resultData }) {
   const [copied, setCopied] = useState(false);
 
   if (!isOpen || !resultData) return null;
 
-  const { logId, stats, notifyReport } = resultData;
+  const { logId, stats, notifyReport, isLate } = resultData;
 
   const handleCopy = async () => {
     try {
@@ -38,6 +38,13 @@ export default function SubmitModal({ isOpen, onClose, resultData }) {
           </div>
           <h3 className="text-lg font-bold text-slate-800">點檢紀錄已成功送出！</h3>
           <p className="text-xs text-slate-400 font-mono mt-0.5">單號：{logId}</p>
+
+          {isLate && (
+            <div className="mt-2 inline-flex items-center space-x-1.5 px-3 py-1 bg-amber-100/90 text-amber-800 text-xs font-bold rounded-full border border-amber-300">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>已記錄為「遲交補登」紀錄</span>
+            </div>
+          )}
         </div>
 
         {/* 統計摘要卡片 */}

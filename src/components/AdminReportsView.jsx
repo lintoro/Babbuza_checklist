@@ -97,7 +97,7 @@ export default function AdminReportsView() {
                 商場巡檢定時總結報表中心
               </h3>
               <p className="text-[11px] text-slate-400">
-                每日 11:00 (開店) 與 20:00 (閉店) 站點完成狀況與異常統計
+                即時統計全商場各站點點檢完成狀況、缺交名冊與異常備忘
               </p>
             </div>
           </div>
@@ -127,7 +127,7 @@ export default function AdminReportsView() {
           </div>
         </div>
 
-        {/* 開店 (11:00) / 閉店 (20:00) 快捷切換按鈕 */}
+        {/* 開店 (營業前) / 閉店 (營業後) 快捷切換按鈕 */}
         <div className="grid grid-cols-2 gap-2.5 pt-1">
           <button
             type="button"
@@ -139,7 +139,7 @@ export default function AdminReportsView() {
             }`}
           >
             <Sun className={`w-4 h-4 ${stage === 'OPEN' ? 'text-amber-600' : 'text-slate-400'}`} />
-            <span>開店總結報表 (11:00 產出)</span>
+            <span>開店總結報表 (營業前)</span>
           </button>
 
           <button
@@ -152,7 +152,7 @@ export default function AdminReportsView() {
             }`}
           >
             <Moon className={`w-4 h-4 ${stage === 'CLOSE' ? 'text-indigo-600' : 'text-slate-400'}`} />
-            <span>閉店總結報表 (20:00 產出)</span>
+            <span>閉店總結報表 (營業後)</span>
           </button>
         </div>
       </div>

@@ -192,10 +192,19 @@ export default function App() {
       };
     });
 
+    // 沙盒測試隔離機制：本地開發 (localhost / 127.0.0.1) 自動帶入 TEST- 前綴與 isTest 標記，完全隔離正式營運資料
+    const isLocalDev = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.local')
+    );
+    const clientPrefix = isLocalDev ? 'TEST-' : 'WEB-';
+
     const payload = {
       deptId: selectedDeptId,
       stage,
-      clientKey: `WEB-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      isTest: isLocalDev,
+      clientKey: `${clientPrefix}${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       items: auditItems,
       handoverNote: handoverText.trim(),
     };

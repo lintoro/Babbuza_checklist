@@ -40,6 +40,73 @@ export default function StationSelector({
   const closeStart = currentDeptInfo?.closeStartTime || '16:45';
   const closeDead = currentDeptInfo?.closeDeadline || '20:00';
 
+  // 取得當前台北時間分鐘數
+  const getTaipeiMinutes = () => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Taipei',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date()).split(':');
+      return (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } catch {
+      const now = new Date();
+      return now.getHours() * 60 + now.getMinutes();
+    }
+  };
+
+  const currentMinutes = getTaipeiMinutes();
+  const parseMinutes = (tStr, defaultVal) => {
+    const [h, m] = (tStr || defaultVal).split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const openStartMin = parseMinutes(openStart, '09:30');
+  const openDeadMin = parseMinutes(openDead, '10:30');
+  const closeStartMin = parseMinutes(closeStart, '16:45');
+  const closeDeadMin = parseMinutes(closeDead, '20:00');
+
+  // 渲染時段狀態標籤
+  const renderStatusBadge = (isCompleted, statusObj, startMin, deadMin) => {
+    if (isCompleted) {
+      if (statusObj?.isLate) {
+        return (
+          <span className="inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+            ✓ 遲交完成 ({formatShortTime(statusObj?.submitTime)})
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+          ✓ 已於 {formatShortTime(statusObj?.submitTime)} 完成
+        </span>
+      );
+    }
+
+    if (currentMinutes < startMin) {
+      return (
+        <span className="inline-flex items-center text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+          未到開放時間
+        </span>
+      );
+    }
+
+    if (currentMinutes > deadMin) {
+      return (
+        <span className="inline-flex items-center text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md border border-rose-300">
+          ⚠️ 逾期未檢 (可補登)
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center text-[10px] font-medium text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">
+        待點檢
+      </span>
+    );
+  };
+
   return (
     <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/80 space-y-4">
       {/* 站點選擇下拉選單 */}
@@ -107,15 +174,7 @@ export default function StationSelector({
 
           {/* 狀態標籤 */}
           <div className="mt-2 flex items-center">
-            {isOpenCompleted ? (
-              <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                ✓ 已於 {formatShortTime(openStatus?.submitTime)} 完成
-              </span>
-            ) : (
-              <span className="inline-flex items-center text-[10px] font-medium text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">
-                待點檢
-              </span>
-            )}
+            {renderStatusBadge(isOpenCompleted, openStatus, openStartMin, openDeadMin)}
           </div>
         </button>
 
@@ -148,15 +207,7 @@ export default function StationSelector({
 
           {/* 狀態標籤 */}
           <div className="mt-2 flex items-center">
-            {isCloseCompleted ? (
-              <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                ✓ 已於 {formatShortTime(closeStatus?.submitTime)} 完成
-              </span>
-            ) : (
-              <span className="inline-flex items-center text-[10px] font-medium text-slate-600 bg-slate-200/70 px-2 py-0.5 rounded-md">
-                待點檢
-              </span>
-            )}
+            {renderStatusBadge(isCloseCompleted, closeStatus, closeStartMin, closeDeadMin)}
           </div>
         </button>
       </div>

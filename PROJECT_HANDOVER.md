@@ -33,7 +33,7 @@
 * **後端架構**：Google Apps Script (GAS) Web App + Google Sheets 關聯式資料庫
   * **Google Apps Script 專案**：可透過 `.clasp.json` 連接（設定範本見下文）
   * **主試算表架構**：包含 Stations, Users, Items, Logs, Issues, Calendar 等標準標準化資料表
-  * **最新生產環境部署**：**`@25`**（支援營業時間嚴格鎖、逾 3 日交接自動歸檔、點檢項目維護 CRUD）
+  * **最新生產環境部署**：**`@30`**（強制綁定試算表台北時區、徹底根除 08:50 / 02:30 時差、送出點檢截止時間全面防呆校驗）
 * **前端託管平台**：**Render** (Static Site)
   * **設定檔**：根目錄已配置 `render.yaml` 與 `.env.example`
   * **環境變數注入**：由 Render 後台 Dashboard 安全注入 `VITE_WEB_APP_URL`
@@ -148,25 +148,33 @@ npm run dev
 ```
 瀏覽器開啟 `http://localhost:3000` 即可進行開發與測試。
 
-### 5. 執行自動化驗收測試 (全量煙道測試)
-本專案已備妥 12 大端點全量煙道測試腳本：
+### 5. 執行自動化驗收測試 (全量煙道測試 - 含沙盒測試零干擾驗收)
+本專案已備妥全量自動化煙道測試腳本：
 ```bash
 python full_smoke_test.py
 ```
 測試內容涵蓋：
 * 健康檢查 (UP)
-* 管理員登入 (Role: ADMIN)
-* 一般同仁登入 (Role: STAFF)
+* 管理員登入 (Role: ADMIN) 與一般同仁登入 (Role: STAFF)
 * 密碼防護與錯誤攔截
-* 11 個站點動態名冊（DIY 排除）
-* 題目清單載入
-* 巡檢戰情矩陣資料（15天區間）
-* 國定連假 Calendar 標籤連動
-* 未結案異常集中看板
-* 已結案歷史紀錄
+* 11 個站點動態名冊（DIY 排除）與題目清單載入
+* 巡檢戰情矩陣資料（15天區間）與國定連假 Calendar 標籤連動
+* 未結案異常集中看板與已結案歷史紀錄
 * LINE 總結報表產出
+* **沙盒測試送出與現場狀態零干擾驗證**：送出 `isTest: true` 點檢紀錄，確認後端自動將其隱形，**現場同仁端 `isSubmitted` 依然為 `false`，題目未被勾選、不顯示已完成**。
+* **三表聯動安全物理銷毀 (Tear-down)**：驗證完畢後自動銷毀測試資料，零殘留。
 
-### 6. 後端推送與部署流程
+### 6. 測試沙盒資料物理清理工具 (Zero-Trace Cleanup)
+若在開發測試或試營運期間送出了測試資料，可透過以下指令進行物理銷毀：
+```bash
+# 清理指定日誌 ID (將連帶自 Audit_Logs, Audit_Details, Handover_Notes 三表完全抹除)
+python cleanup_test_data.py <LOG_ID>
+
+# 例如：
+python cleanup_test_data.py TEST-LOG-20261015-1F-OPEN-V1
+```
+
+### 7. 後端推送與部署流程
 若修改了 `gas/` 內的後端程式碼：
 ```bash
 # 推送至 GAS
@@ -176,7 +184,7 @@ npx @google/clasp push -f
 npx @google/clasp deploy -i <YOUR_DEPLOYMENT_ID> -d "版本更新描述"
 ```
 
-### 7. 前端推送至 Render 自動發布
+### 8. 前端推送至 Render 自動發布
 若修改了前端程式碼，推送到 GitHub `main` 分支時，Render 將自動執行 `npm run build` 並更新上線：
 ```bash
 git add .

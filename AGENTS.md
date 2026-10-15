@@ -26,10 +26,28 @@ git ls-files | Select-String "^\.env"
 # 2. 確認工作目錄與暫存區未被污染
 git status
 
-# 3. 執行全量煙道測試，確認後端與資安防護正常
+# 3. 執行全量煙道測試，確認後端與資安防護正常 (含沙盒模式隔離驗收)
 python full_smoke_test.py
-# 預期輸出：通過 12 / 12 項測試
 ```
+
+---
+
+## 🧪 第二鐵律：沙盒測試與零污染隔離規範 (Sandbox Testing & Zero-Pollution Policy)
+
+**商場現已處於試營運與正式使用階段，任何本地開發、換機測試或自動化腳本驗收，絕不允許污染正式環境！**
+
+### 1. 本地開發與自動化測試強制沙盒標記
+* **自動沙盒前綴**：
+  - 本地前端 (`localhost` / `127.0.0.1`) 送出點檢時，程式碼自動注入 `isTest: true` 與 `clientKey: TEST-...`。
+  - 任何測試腳本送出之日誌，其 ID 必須帶有 `TEST-LOG-`，禁止使用生產前綴 `LOG-`。
+* **後端零干擾隔離**：
+  - 後端系統在計算「今日站點點檢完成狀態（`getDepartmentStatus`）」、「戰情打勾矩陣（`getInspectionMatrix`）」、「定時 LINE 總結報表（`generateSummaryReport`）」時，**一律自動排除 `isTest: true` 或 `clientKey` 帶有 `TEST-` 的紀錄**。
+  - **一般同仁手機與電腦端完全無感，絕不會看到測試時段被勾選或顯示「已完成」，也不會流入任何測試異常備忘**。
+
+### 2. 測試紀錄即時銷毀與定期清理
+* **即時銷毀 (Tear-down)**：自動化測試腳本在驗證完畢後，應優先呼叫 `admin_remove_audit_log` 執行三表聯動（`Audit_Logs`、`Audit_Details`、`Handover_Notes`）物理銷毀。
+* **手動清理工具**：若需清理特定測試單號，執行 `python cleanup_test_data.py <LOG_ID>`。
+* **換機交接要求**：任何開發者換機接案時，必須於新環境確認此沙盒機制正常運作，嚴禁對生產資料庫直推非沙盒假數據。
 
 ---
 

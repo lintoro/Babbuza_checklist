@@ -19,8 +19,8 @@ const Report = {
     const matched = allDepts.find(d => String(d.Dept_ID).trim().toUpperCase() === cleanId);
     if (matched && matched.Dept_Name) return matched.Dept_Name;
 
-    if (cleanId === 'BENPU') return '本鋪';
-    if (cleanId === 'XIAOPU') return '小鋪';
+    if (cleanId === 'BENPU') return '本舖';
+    if (cleanId === 'XIAOPU') return '小舖';
     return cleanId;
   },
 
@@ -45,9 +45,11 @@ const Report = {
     const todayLogs = allLogs.filter(l => {
       let d = l.Biz_Date;
       if (d instanceof Date) d = Utils.formatDate(d);
+      const isTestLog = Boolean(l.Is_Test) || String(l.Client_Key || '').toUpperCase().startsWith('TEST-');
       return String(d).trim() === targetDate &&
              String(l.Stage).trim().toUpperCase() === cleanStage &&
-             Boolean(l.Is_Current);
+             Boolean(l.Is_Current) &&
+             !isTestLog; // 排除測試沙盒紀錄
     });
 
     // 建立 Dept_ID -> Log 對照
@@ -61,12 +63,15 @@ const Report = {
     const logIds = new Set(todayLogs.map(l => l.Log_ID));
     const defectDetails = allDetails.filter(dt => logIds.has(dt.Log_ID) && dt.Status === 'NG');
 
-    // 4. 讀取當日 Handover_Notes (交接與異常備忘)
+    // 4. 讀取當日 Handover_Notes (交接與異常備忘，強制排除測試沙盒產生的備忘)
     const allNotes = Utils.sheetToObjects('Handover_Notes');
     const todayNotes = allNotes.filter(n => {
       let d = n.Biz_Date;
       if (d instanceof Date) d = Utils.formatDate(d);
-      return String(d).trim() === targetDate;
+      const isTestNote = String(n.Note_ID || '').toUpperCase().startsWith('TEST-') ||
+                         String(n.Source_Log_ID || '').toUpperCase().startsWith('TEST-') ||
+                         String(n.Note_ID || '').includes('-TEST-');
+      return String(d).trim() === targetDate && !isTestNote;
     });
 
     // 5. 分類統計
@@ -78,7 +83,12 @@ const Report = {
       const deptId = dept.Dept_ID;
       const deptName = this.getDeptName(deptId, allDepts);
       const log = logMap[deptId];
-      const deadline = cleanStage === 'OPEN' ? Utils.formatTime(dept.Open_Deadline || '10:30') : Utils.formatTime(dept.Close_Deadline || '20:00');
+      // 動態解析各站點截止時間 (透過 Checklist.resolveTime 進行合法範圍驗證，杜絕時差偏差)
+      const rawDeadline = cleanStage === 'OPEN' ? dept.Open_Deadline : dept.Close_Deadline;
+      const defaultDeadline = cleanStage === 'OPEN' ? '10:30' : '20:00';
+      const minValid = cleanStage === 'OPEN' ? '07:00' : '15:00';
+      const maxValid = cleanStage === 'OPEN' ? '16:00' : '23:59';
+      const deadline = Checklist.resolveTime(rawDeadline, defaultDeadline, minValid, maxValid);
 
       if (!log) {
         // 尚未繳交 / 缺交

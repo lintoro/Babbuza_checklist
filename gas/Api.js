@@ -328,12 +328,54 @@ function doPost(e) {
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
+      case 'admin_remove_handover_note': {
+        if (!currentUser || currentUser.role !== 'ADMIN') {
+          return Utils.jsonResponse(null, false, '僅系統管理員可操作');
+        }
+        const noteId = String(body.noteId || '').trim();
+        const sheet = Utils.getSheet('Handover_Notes');
+        const data = sheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h).trim());
+        const idCol = headers.indexOf('Note_ID');
+        let deleted = false;
+        if (idCol !== -1 && noteId) {
+          for (let i = data.length - 1; i >= 1; i--) {
+            if (String(data[i][idCol]).trim() === noteId) {
+              sheet.deleteRow(i + 1);
+              deleted = true;
+            }
+          }
+        }
+        return Utils.jsonResponse({ success: deleted, message: deleted ? `已成功銷毀交接備忘 [${noteId}]` : '查無該備忘' });
+      }
+
       case 'admin_normalize_times': {
         if (!currentUser || currentUser.role !== 'ADMIN') {
           return Utils.jsonResponse(null, false, '僅系統管理員可執行');
         }
         Utils.normalizeDepartmentTimes();
-        return Utils.jsonResponse({ success: true, message: '站點營業時間已成功正規化為純字串' });
+        Utils.normalizeAuditLogsTimes();
+
+        // 一併物理清除歷史測試殘留備忘單號
+        const sheetH = Utils.getSheet('Handover_Notes');
+        const dataH = sheetH.getDataRange().getValues();
+        const headersH = dataH[0].map(h => String(h).trim());
+        const idColH = headersH.indexOf('Note_ID');
+        let cleanedNotes = 0;
+        if (idColH !== -1) {
+          for (let i = dataH.length - 1; i >= 1; i--) {
+            const nId = String(dataH[i][idColH]).trim();
+            if (nId === 'NOTE-20261015-1F-OPEN-MEMO-1699' || nId === 'NOTE-20261015-1F-OPEN-NG1-1699') {
+              sheetH.deleteRow(i + 1);
+              cleanedNotes++;
+            }
+          }
+        }
+
+        return Utils.jsonResponse({
+          success: true,
+          message: `站點營業時間已成功正規化為純字串，並連帶物理清除 ${cleanedNotes} 筆歷史殘留測試備忘`
+        });
       }
 
       case 'seed_all_holidays': {

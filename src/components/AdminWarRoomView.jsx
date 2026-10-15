@@ -25,6 +25,26 @@ import {
 
 const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
+const formatShortTime = (t) => {
+  if (!t) return '';
+  const str = String(t).trim();
+  if (str.includes('T') || str.includes('Z')) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('zh-TW', {
+          timeZone: 'Asia/Taipei',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+      }
+    } catch (e) {}
+  }
+  if (str.includes(' ')) return str.split(' ')[1].slice(0, 5);
+  return str.slice(0, 5);
+};
+
 // 中華民國 2026 ~ 2027 年重要國定假日與連續假期清冊
 const HOLIDAY_MAP = {
   // 2026 年
@@ -279,7 +299,7 @@ export default function AdminWarRoomView() {
         if (!rec || !rec.executed) return '"未執行"';
         const statusZh = rec.status === 'OK' ? '正常' : rec.status === 'NG' ? '異常' : '不適用';
         const remark = rec.remark ? ` [${rec.remark}]` : '';
-        return `"${statusZh} (${rec.executor} ${rec.submitTime})${remark}"`;
+        return `"${statusZh} (${rec.executor} ${formatShortTime(rec.submitTime)})${remark}"`;
       });
       csv += `"${cat}","${title}",${rowCols.join(',')}\n`;
     });
@@ -569,7 +589,7 @@ export default function AdminWarRoomView() {
                               {/* 執行人與時間 (直接顯示於畫面上) */}
                               <div className="text-[10px] text-slate-600 leading-tight">
                                 <span className="font-semibold block">{rec.executorName}</span>
-                                <span className="text-slate-400 text-[9px]">{rec.submitTime}</span>
+                                <span className="text-slate-400 text-[9px]">{formatShortTime(rec.submitTime)}</span>
                               </div>
 
                               {rec.remark && (

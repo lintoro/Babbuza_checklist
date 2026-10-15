@@ -7,7 +7,15 @@ const Utils = {
    * 取得主試算表物件
    */
   getSpreadsheet: function() {
-    return SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    try {
+      if (ss && ss.getSpreadsheetTimeZone() !== 'Asia/Taipei') {
+        ss.setSpreadsheetTimeZone('Asia/Taipei');
+      }
+    } catch (e) {
+      console.warn('Set spreadsheet timezone failed:', e);
+    }
+    return ss;
   },
 
   /**
@@ -209,20 +217,25 @@ const Utils = {
   formatTime: function(val) {
     if (!val || val === '') return '';
     if (typeof val === 'string') {
-      const match = val.match(/(\d{1,2}:\d{2})/);
+      const trimmed = val.trim();
+      // 若為 ISO 字串例如 2026-10-15T09:50:00.000Z，轉為台北時間
+      if (trimmed.includes('T') || trimmed.includes('Z')) {
+        try {
+          const d = new Date(trimmed);
+          if (!isNaN(d.getTime())) {
+            return Utilities.formatDate(d, 'Asia/Taipei', 'HH:mm');
+          }
+        } catch (e) {}
+      }
+      const match = trimmed.match(/(\d{1,2}:\d{2})/);
       if (match) {
         const parts = match[1].split(':');
         return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
       }
-      return val.trim();
+      return trimmed;
     }
     if (val instanceof Date) {
-      // 處理 Google Sheets 1899 年純時間儲存格時區偏移問題
-      if (val.getFullYear() <= 1900) {
-        const h = String(val.getHours()).padStart(2, '0');
-        const m = String(val.getMinutes()).padStart(2, '0');
-        return `${h}:${m}`;
-      }
+      // 一律強制以台灣台北標準時區 (Asia/Taipei) 格式化為 HH:mm，杜絕 UTC 偏差
       return Utilities.formatDate(val, 'Asia/Taipei', 'HH:mm');
     }
     return String(val);
@@ -240,6 +253,10 @@ const Utils = {
    */
   normalizeDepartmentTimes: function() {
     try {
+      const ss = this.getSpreadsheet();
+      if (ss) {
+        ss.setSpreadsheetTimeZone('Asia/Taipei');
+      }
       const sheet = this.getSheet('Departments');
       const data = sheet.getDataRange().getValues();
       const headers = data[0].map(h => String(h).trim());
@@ -252,13 +269,86 @@ const Utils = {
       if (openStartCol === -1 || closeStartCol === -1) return;
 
       for (let i = 1; i < data.length; i++) {
-        sheet.getRange(i + 1, openStartCol + 1).setNumberFormat('@').setValue('09:30');
-        sheet.getRange(i + 1, openDeadCol + 1).setNumberFormat('@').setValue('10:30');
-        sheet.getRange(i + 1, closeStartCol + 1).setNumberFormat('@').setValue('16:45');
-        sheet.getRange(i + 1, closeDeadCol + 1).setNumberFormat('@').setValue('20:00');
+        let curOpenStart = this.formatTime(data[i][openStartCol]);
+        if (!curOpenStart || curOpenStart < '06:00' || curOpenStart > '14:00') curOpenStart = '09:30';
+
+        let curOpenDead = this.formatTime(data[i][openDeadCol]);
+        if (!curOpenDead || curOpenDead < '07:00' || curOpenDead > '16:00') curOpenDead = '10:30';
+
+        let curCloseStart = this.formatTime(data[i][closeStartCol]);
+        if (!curCloseStart || curCloseStart < '13:00' || curCloseStart > '23:59') curCloseStart = '16:45';
+
+        let curCloseDead = this.formatTime(data[i][closeDeadCol]);
+        if (!curCloseDead || curCloseDead < '15:00' || curCloseDead > '23:59') curCloseDead = '20:00';
+
+        sheet.getRange(i + 1, openStartCol + 1).setNumberFormat('@').setValue(curOpenStart);
+        sheet.getRange(i + 1, openDeadCol + 1).setNumberFormat('@').setValue(curOpenDead);
+        sheet.getRange(i + 1, closeStartCol + 1).setNumberFormat('@').setValue(curCloseStart);
+        sheet.getRange(i + 1, closeDeadCol + 1).setNumberFormat('@').setValue(curCloseDead);
       }
     } catch (e) {
       console.warn('normalizeDepartmentTimes error:', e);
+    }
+  },
+
+  /**
+   * 批次檢查並修正 Audit_Logs 表格的時間為純字串，避免試算表底層日期格式時區偏移
+   */
+  normalizeAuditLogsTimes: function() {
+    try {
+      const sheet = this.getSheet('Audit_Logs');
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+
+      const headers = data[0].map(h => String(h).trim());
+      const submitCol = headers.indexOf('Submit_Time');
+      const deadCol = headers.indexOf('Deadline');
+      const stageCol = headers.indexOf('Stage');
+
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const stg = stageCol !== -1 ? String(row[stageCol]).toUpperCase() : '';
+
+        // 1. 處理 Submit_Time
+        if (submitCol !== -1) {
+          const val = row[submitCol];
+          if (val instanceof Date) {
+            let formatted = Utilities.formatDate(val, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+            // 若因為之前試算表被預設美西時區 (UTC-7) 導致今天 17:xx 變成了 08:xx，在此進行校正
+            const timePart = formatted.split(' ')[1] || '';
+            if (stg === 'CLOSE' && timePart >= '07:00:00' && timePart <= '11:00:00') {
+              // 補回 9 小時差距
+              const fixedDate = new Date(val.getTime() + 9 * 60 * 60 * 1000);
+              formatted = Utilities.formatDate(fixedDate, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+            }
+            sheet.getRange(i + 1, submitCol + 1).setNumberFormat('@').setValue(formatted);
+          } else if (typeof val === 'string' && val.includes('T')) {
+            // ISO 字串格式處理
+            try {
+              const d = new Date(val);
+              if (!isNaN(d.getTime())) {
+                let formatted = Utilities.formatDate(d, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+                sheet.getRange(i + 1, submitCol + 1).setNumberFormat('@').setValue(formatted);
+              }
+            } catch (e) {}
+          }
+        }
+
+        // 2. 處理 Deadline
+        if (deadCol !== -1) {
+          const dVal = row[deadCol];
+          let dStr = this.formatTime(dVal);
+          if (stg === 'OPEN' && (!dStr || dStr < '07:00' || dStr > '16:00')) {
+            dStr = '10:30';
+            sheet.getRange(i + 1, deadCol + 1).setNumberFormat('@').setValue(dStr);
+          } else if (stg === 'CLOSE' && (!dStr || dStr < '15:00' || dStr > '23:59')) {
+            dStr = '20:00';
+            sheet.getRange(i + 1, deadCol + 1).setNumberFormat('@').setValue(dStr);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('normalizeAuditLogsTimes error:', e);
     }
   },
 

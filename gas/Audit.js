@@ -43,13 +43,15 @@ const Audit = {
       }
     }
 
-    // 2. 開始時間與截止時間判定 (後端嚴格防護)
+    // 2. 開始時間與截止時間判定 (後端嚴格防護，使用 resolveTime 杜絕非營業時段異常值)
     const depts = Utils.sheetToObjects('Departments');
     const dept = depts.find(d => String(d.Dept_ID).trim().toUpperCase() === deptId);
-    let rawStart = stage === 'OPEN' ? (dept ? dept.Open_Start_Time : '') : (dept ? dept.Close_Start_Time : '');
-    let rawDead = stage === 'OPEN' ? (dept ? dept.Open_Deadline : '') : (dept ? dept.Close_Deadline : '');
-    let startTimeStr = Utils.formatTime(rawStart) || (stage === 'OPEN' ? '09:30' : '16:45');
-    let deadlineStr = Utils.formatTime(rawDead) || (stage === 'OPEN' ? '10:30' : '20:00');
+    let startTimeStr = stage === 'OPEN'
+      ? Checklist.resolveTime(dept ? dept.Open_Start_Time : '', '09:30', '06:00', '14:00')
+      : Checklist.resolveTime(dept ? dept.Close_Start_Time : '', '16:45', '13:00', '23:59');
+    let deadlineStr = stage === 'OPEN'
+      ? Checklist.resolveTime(dept ? dept.Open_Deadline : '', '10:30', '07:00', '16:00')
+      : Checklist.resolveTime(dept ? dept.Close_Deadline : '', '20:00', '15:00', '23:59');
 
     const currentTimeStr = Utils.getCurrentTaipeiTime();
     if (currentTimeStr < startTimeStr) {
@@ -59,6 +61,7 @@ const Audit = {
       };
     }
     const isLate = currentTimeStr > deadlineStr;
+    const isTest = Boolean(payload.isTest) || String(clientKey || '').toUpperCase().startsWith('TEST-');
 
     // 3. 處理先前若已有當天同一時段的舊版本 (支援修正補登 Version 演進)
     const logsSheet = Utils.getSheet('Audit_Logs');
@@ -70,13 +73,16 @@ const Audit = {
     const sameStageLogs = allLogs.filter(l => {
       let d = l.Biz_Date;
       if (d instanceof Date) d = Utils.formatDate(d);
+      const isTestLog = Boolean(l.Is_Test) || String(l.Client_Key || '').toUpperCase().startsWith('TEST-');
       return String(d).trim() === bizDate &&
              String(l.Dept_ID).trim().toUpperCase() === deptId &&
-             String(l.Stage).trim().toUpperCase() === stage;
+             String(l.Stage).trim().toUpperCase() === stage &&
+             !isTestLog; // 排除測試紀錄
     });
 
     let version = 1;
-    if (sameStageLogs.length > 0) {
+    // 只有在非測試模式且有先前正式紀錄時，才推進正式版本並將舊版本 Is_Current 設為 false
+    if (!isTest && sameStageLogs.length > 0) {
       version = sameStageLogs.length + 1;
       // 將舊紀錄的 Is_Current 改為 false (動態欄位定位)
       sameStageLogs.forEach(oldLog => {
@@ -103,7 +109,11 @@ const Audit = {
     });
 
     // 5. 產生 Log_ID
-    const logId = `LOG-${bizDate.replace(/-/g, '')}-${deptId}-${stage}-V${version}`;
+    const logPrefix = isTest ? 'TEST-LOG' : 'LOG';
+    const logId = `${logPrefix}-${bizDate.replace(/-/g, '')}-${deptId}-${stage}-V${version}`;
+    const effectiveClientKey = isTest && !String(clientKey || '').toUpperCase().startsWith('TEST-')
+      ? `TEST-${clientKey}`
+      : clientKey;
 
     // 6. 寫入 Audit_Logs
     // 欄位: Log_ID, Biz_Date, Dept_ID, Stage, Version, Is_Current, Correction_Reason,
@@ -114,8 +124,8 @@ const Audit = {
       deptId,
       stage,
       version,
-      true, // Is_Current
-      payload.correctionReason || '',
+      !isTest, // 測試紀錄的 Is_Current 一律為 false，永不覆蓋正式狀態
+      payload.correctionReason || (isTest ? '[沙盒測試自動標記]' : ''),
       currentUser.userId,
       currentUser.name,
       submitTime,
@@ -125,9 +135,13 @@ const Audit = {
       okCount,
       ngCount,
       naCount,
-      clientKey
+      effectiveClientKey
     ];
     logsSheet.appendRow(logRow);
+    const lastRow = logsSheet.getLastRow();
+    // 強制設定 Submit_Time (第10欄) 與 Deadline (第11欄) 為純文字格式，避免 Google Sheets 試算表底層日期序號二次轉譯
+    logsSheet.getRange(lastRow, 10).setNumberFormat('@').setValue(submitTime);
+    logsSheet.getRange(lastRow, 11).setNumberFormat('@').setValue(deadlineStr);
 
     // 7. 批次寫入 Audit_Details 快照
     // 欄位: Log_ID, Item_ID, Category_Snapshot, Title_Snapshot, Status, Value, Remark
@@ -146,63 +160,66 @@ const Audit = {
       detailsSheet.getRange(startRow, 1, detailRows.length, detailRows[0].length).setValues(detailRows);
     }
 
-    // 8. 異常項目 (NG) 自動寫入 Handover_Notes
-    const handoverSheet = Utils.getSheet('Handover_Notes');
-    const handoverRows = [];
-    const noteIdPrefix = `NOTE-${bizDate.replace(/-/g, '')}-${deptId}-${stage}`;
-    const uniqueSuffix = Date.now().toString().slice(-4);
+    // 8. 異常項目 (NG) 自動寫入 Handover_Notes (若為測試沙盒模式則跳過，避免污染現場交接備忘)
+    if (!isTest) {
+      const handoverSheet = Utils.getSheet('Handover_Notes');
+      const handoverRows = [];
+      const noteIdPrefix = `NOTE-${bizDate.replace(/-/g, '')}-${deptId}-${stage}`;
+      const uniqueSuffix = Date.now().toString().slice(-4);
 
-    defectItems.forEach((defect, idx) => {
-      const noteId = `${noteIdPrefix}-NG${idx + 1}-${uniqueSuffix}`;
-      const content = `【點檢異常】${defect.category ? '[' + defect.category + '] ' : ''}${defect.title}：${defect.remark || '未填寫異常說明'}`;
-      handoverRows.push([
-        noteId,
-        bizDate,
-        deptId,
-        'DEFECT',
-        logId,
-        defect.itemId || '',
-        content,
-        currentUser.userId,
-        '', // Assignee_ID
-        'OPEN', // Status
-        '', // Resolution
-        '', // Resolved_By
-        '', // Resolved_At
-        submitTime // Created_At
-      ]);
-    });
+      defectItems.forEach((defect, idx) => {
+        const noteId = `${noteIdPrefix}-NG${idx + 1}-${uniqueSuffix}`;
+        const content = `【點檢異常】${defect.category ? '[' + defect.category + '] ' : ''}${defect.title}：${defect.remark || '未填寫異常說明'}`;
+        handoverRows.push([
+          noteId,
+          bizDate,
+          deptId,
+          'DEFECT',
+          logId,
+          defect.itemId || '',
+          content,
+          currentUser.userId,
+          '', // Assignee_ID
+          'OPEN', // Status
+          '', // Resolution
+          '', // Resolved_By
+          '', // Resolved_At
+          submitTime // Created_At
+        ]);
+      });
 
-    // 若填寫人有手動輸入交接事項，亦寫入 Handover_Notes
-    if (payload.handoverNote && String(payload.handoverNote).trim() !== '') {
-      const memoNoteId = `${noteIdPrefix}-MEMO-${uniqueSuffix}`;
-      handoverRows.push([
-        memoNoteId,
-        bizDate,
-        deptId,
-        'HANDOVER',
-        logId,
-        '',
-        String(payload.handoverNote).trim(),
-        currentUser.userId,
-        '',
-        'OPEN',
-        '',
-        '',
-        '',
-        submitTime
-      ]);
-    }
+      // 若填寫人有手動輸入交接事項，亦寫入 Handover_Notes
+      if (payload.handoverNote && String(payload.handoverNote).trim() !== '') {
+        const memoNoteId = `${noteIdPrefix}-MEMO-${uniqueSuffix}`;
+        handoverRows.push([
+          memoNoteId,
+          bizDate,
+          deptId,
+          'HANDOVER',
+          logId,
+          '',
+          String(payload.handoverNote).trim(),
+          currentUser.userId,
+          '',
+          'OPEN',
+          '',
+          '',
+          '',
+          submitTime
+        ]);
+      }
 
-    if (handoverRows.length > 0) {
-      const hStartRow = handoverSheet.getLastRow() + 1;
-      handoverSheet.getRange(hStartRow, 1, handoverRows.length, handoverRows[0].length).setValues(handoverRows);
+      if (handoverRows.length > 0) {
+        const hStartRow = handoverSheet.getLastRow() + 1;
+        handoverSheet.getRange(hStartRow, 1, handoverRows.length, handoverRows[0].length).setValues(handoverRows);
+      }
     }
 
     // 9. 格式化 LINE 通報複製文字
     const stageZh = stage === 'OPEN' ? '營業前' : '營業後';
     const deptName = dept ? dept.Dept_Name : deptId;
-    let notifyReport = `【Babbuza 巡檢通報】\n` +
+    let notifyReport = (isTest ? `【🧪 測試沙盒模式 - 不計入正式報表】\n` : '') +
+      `【Babbuza 巡檢通報】\n` +
       `🏢 站點：${deptName} (${stageZh})\n` +
       `📅 日期：${bizDate} ${currentTimeStr}\n` +
       `👤 檢核人：${currentUser.name}\n` +

@@ -52,7 +52,11 @@ export default function ChecklistSection({
   const currentMinutes = getTaipeiMinutes();
   const [startH, startM] = (startTime || '09:30').split(':').map(Number);
   const startMinutes = (startH || 0) * 60 + (startM || 0);
+  const [deadH, deadM] = (deadline || '10:30').split(':').map(Number);
+  const deadlineMinutes = (deadH || 0) * 60 + (deadM || 0);
+
   const isNotOpenYet = currentMinutes < startMinutes;
+  const isOverdue = currentMinutes > deadlineMinutes;
 
   // 分組依據 Category
   const groupedItems = items.reduce((acc, item) => {
@@ -95,6 +99,19 @@ export default function ChecklistSection({
             <span className="font-bold block text-sm">⏰ 尚未到達開放回報時間</span>
             <span className="text-xs text-amber-700">
               {stage === 'OPEN' ? '營業前 (開店)' : '營業後 (閉店)'} 開放時段為 {startTime} ～ {deadline}，未到時間無法填報送出。
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 超過截止時間警告橫幅 (方案 A: 逾期遲交補登) */}
+      {!isNotOpenYet && isOverdue && (
+        <div className="p-4 bg-rose-50 border border-rose-300 rounded-2xl flex items-center space-x-3 text-rose-900 text-xs shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+          <div>
+            <span className="font-bold block text-sm">⚠️ 已超過表定截止時間 ({deadline}) - 補登模式</span>
+            <span className="text-xs text-rose-700">
+              目前已逾期。現場人員仍可繼續勾選並送出巡檢，系統將自動註記為「遲交補登」並排版通報管理群組。
             </span>
           </div>
         </div>
@@ -302,6 +319,8 @@ export default function ChecklistSection({
           className={`w-full py-3.5 text-white font-bold text-sm rounded-2xl shadow-lg flex items-center justify-center space-x-2 transition-all ${
             isNotOpenYet
               ? 'bg-slate-400 cursor-not-allowed shadow-none'
+              : isOverdue
+              ? 'bg-rose-600 hover:bg-rose-700 active:scale-[0.99] shadow-rose-600/30 cursor-pointer'
               : 'bg-brand-600 hover:bg-brand-700 active:scale-[0.99] shadow-brand-600/30 cursor-pointer'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
@@ -314,6 +333,11 @@ export default function ChecklistSection({
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
               <span>儲存並產出通報中...</span>
+            </>
+          ) : isOverdue ? (
+            <>
+              <AlertTriangle className="w-4 h-4" />
+              <span>⚠️ 遲交補登送出 ({completedCount}/{totalCount})</span>
             </>
           ) : (
             <>
