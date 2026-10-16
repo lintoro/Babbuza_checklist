@@ -55,7 +55,7 @@ const SeedData = {
     const logId1 = `LOG-${dBeforeYesterday.replace(/-/g, '')}-1F-OPEN-V1`;
     newLogs.push([
       logId1, dBeforeYesterday, '1F', 'OPEN', 1, true, '',
-      'B115050', '李俐旻', `${dBeforeYesterday} 10:15:30`, '10:30', false,
+      'B110001', '點檢員A', `${dBeforeYesterday} 10:15:30`, '10:30', false,
       items1F.length, items1F.length, 0, 0, `SEED-1F-${dBeforeYesterday}`
     ]);
     items1F.forEach(it => {
@@ -78,7 +78,7 @@ const SeedData = {
     });
     newLogs.push([
       logId2, dYesterday, '1F', 'OPEN', 1, true, '',
-      'B115050', '李俐旻', `${dYesterday} 10:22:15`, '10:30', false,
+      'B110001', '點檢員A', `${dYesterday} 10:22:15`, '10:30', false,
       items1F.length, okCount1F, ngCount1F, 0, `SEED-1F-${dYesterday}`
     ]);
 
@@ -91,7 +91,7 @@ const SeedData = {
       const logIdB1 = `LOG-${dBeforeYesterday.replace(/-/g, '')}-BENPU-OPEN-V1`;
       newLogs.push([
         logIdB1, dBeforeYesterday, 'BENPU', 'OPEN', 1, true, '',
-        'B113083', '柯又溱', `${dBeforeYesterday} 10:12:00`, '10:30', false,
+        'B110002', '點檢員B', `${dBeforeYesterday} 10:12:00`, '10:30', false,
         itemsBenpu.length, itemsBenpu.length, 0, 0, `SEED-BENPU-${dBeforeYesterday}`
       ]);
       itemsBenpu.forEach(it => {
@@ -102,7 +102,7 @@ const SeedData = {
       const logIdB2 = `LOG-${dYesterday.replace(/-/g, '')}-BENPU-OPEN-V1`;
       newLogs.push([
         logIdB2, dYesterday, 'BENPU', 'OPEN', 1, true, '',
-        'B113083', '柯又溱', `${dYesterday} 10:18:40`, '10:30', false,
+        'B110002', '點檢員B', `${dYesterday} 10:18:40`, '10:30', false,
         itemsBenpu.length, itemsBenpu.length, 0, 0, `SEED-BENPU-${dYesterday}`
       ]);
       itemsBenpu.forEach(it => {
@@ -118,7 +118,7 @@ const SeedData = {
       const logIdM1 = `LOG-${dYesterday.replace(/-/g, '')}-MSS1-OPEN-V1`;
       newLogs.push([
         logIdM1, dYesterday, 'MSS1', 'OPEN', 1, true, '',
-        'B113014', '陳哲胤', `${dYesterday} 10:28:10`, '10:30', false,
+        'B110003', '點檢員C', `${dYesterday} 10:28:10`, '10:30', false,
         itemsMss1.length, itemsMss1.length, 0, 0, `SEED-MSS1-${dYesterday}`
       ]);
       itemsMss1.forEach(it => {
@@ -148,7 +148,7 @@ const SeedData = {
       logId2,
       'ITM-0010',
       '【點檢異常】[場域維護] A1冷氣、電燈、美術館燈：A1美術館軌道燈有2盞不亮，已通報總務更換',
-      'B115050',
+      'B110001',
       '',
       'OPEN',
       '',
@@ -166,7 +166,7 @@ const SeedData = {
       '',
       '',
       '今日 14:00 有南投國小校外教學團體預約導覽 (約 35 人)，請備妥全半票及抵用券',
-      'B115050',
+      'B110001',
       '',
       'OPEN',
       '',
@@ -184,7 +184,7 @@ const SeedData = {
       '',
       '',
       '零找金 500 元已點收無誤，今日主推新品手作檜木杯墊禮盒，陳列於結帳櫃台前',
-      'B113083',
+      'B110002',
       '',
       'OPEN',
       '',
@@ -202,7 +202,7 @@ const SeedData = {
       '',
       '',
       '大門感應電動門防夾感應器偶發鈍化，已張貼注意安全標語並已通知維修廠商安排今日複檢',
-      'B113014',
+      'B110003',
       '',
       'OPEN',
       '',
@@ -220,11 +220,11 @@ const SeedData = {
       logId1,
       'ITM-0005',
       '【點檢異常】[POS] 發票信用卡紙捲備品檢查：備用發票紙捲剩餘 1 捲不足',
-      'B115050',
+      'B110001',
       '',
       'RESOLVED',
       '已向行政庫房領取 2 箱發票紙捲完成備品補充',
-      '李俐旻 (B115050)',
+      '點檢員A (B110001)',
       `${dBeforeYesterday} 11:30:00`,
       `${dBeforeYesterday} 10:15:30`
     ]);

@@ -12,6 +12,7 @@ import re
 sys.stdout.reconfigure(encoding='utf-8')
 
 URL = os.environ.get('WEB_APP_URL') or os.environ.get('VITE_WEB_APP_URL')
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
 
 if os.path.exists('.env'):
@@ -20,6 +21,9 @@ if os.path.exists('.env'):
             m_url = re.match(r'^(?:WEB_APP_URL|VITE_WEB_APP_URL)\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
             if m_url and not URL:
                 URL = m_url.group(1).strip()
+            m_user = re.match(r'^ADMIN_USER_ID\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
+            if m_user and not ADMIN_USER_ID:
+                ADMIN_USER_ID = m_user.group(1).strip()
             m_pwd = re.match(r'^ADMIN_PASSWORD\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
             if m_pwd and not ADMIN_PASSWORD:
                 ADMIN_PASSWORD = m_pwd.group(1).strip()
@@ -45,14 +49,14 @@ print('   BABBUZA 巡檢系統 - 測試沙盒資料清理工具 (Cleanup)   ')
 print('==================================================\n')
 
 # 1. 登入管理員以取得 Token
-admin_pwd = ADMIN_PASSWORD or '111155'
-res_login = post({'action': 'login', 'userId': 'B111155', 'password': admin_pwd})
-if not res_login.get('success'):
-    res_login = post({'action': 'login', 'userId': 'B111155', 'password': '000000'})
+if not ADMIN_USER_ID or not ADMIN_PASSWORD:
+    print('ℹ️ [提示] 清理工具需管理員權限，請於 .env 或環境變數配置 ADMIN_USER_ID 與 ADMIN_PASSWORD。')
+    sys.exit(0)
 
+res_login = post({'action': 'login', 'userId': ADMIN_USER_ID, 'password': ADMIN_PASSWORD})
 admin_token = (res_login.get('data') or {}).get('token')
 if not admin_token:
-    print('❌ [錯誤] 管理員登入失敗，無法執行物理清理。請於 .env 設定正確的 ADMIN_PASSWORD。')
+    print('❌ [錯誤] 管理員登入失敗，無法執行物理清理。請確認 ADMIN_USER_ID 與 ADMIN_PASSWORD。')
     sys.exit(1)
 
 print('🔑 管理員身分驗證成功，正在檢查測試殘留日誌...')

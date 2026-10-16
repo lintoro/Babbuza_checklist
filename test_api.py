@@ -41,18 +41,19 @@ print('=== 1. 測試 GET status ===')
 res = get('action=status')
 print(json.dumps(res, ensure_ascii=False, indent=2))
 
-print('\n=== 2. 測試 離職人員阻擋登入 (A115018 鄭佳驊) ===')
-res_disabled = post({'action': 'login', 'userId': 'A115018', 'password': 'A115018'})
+print('\n=== 2. 測試 離職人員阻擋登入 (離職範例帳號 A110999) ===')
+res_disabled = post({'action': 'login', 'userId': 'A110999', 'password': 'dummy_password'})
 print(json.dumps(res_disabled, ensure_ascii=False, indent=2))
 
-print('\n=== 3. 測試 在職員工正常登入 (B115050 李俐旻) ===')
-res_login = post({'action': 'login', 'userId': 'B115050', 'password': '000000'})
+print('\n=== 3. 測試 員工登入防線校驗 (未授權密碼阻絕) ===')
+res_login = post({'action': 'login', 'userId': 'B110001', 'password': 'wrong_password_test'})
 print('登入結果:', res_login.get('success'))
-print('使用者資訊:', res_login.get('data', {}).get('user'))
-token = res_login.get('data', {}).get('token')
+print('防護訊息:', res_login.get('error'))
 
+# 模擬具備 Token 時的後續端點測試
+token = os.environ.get('TEST_TOKEN')
 if token:
-    print('\n=== 4. 測試 取得授權站點 (B115050 服務台組) ===')
+    print('\n=== 4. 測試 取得授權站點 ===')
     res_depts = get(f'action=get_user_depts&token={token}')
     depts = res_depts.get('data', {}).get('departments', [])
     for d in depts:
@@ -64,20 +65,6 @@ if token:
     print(f"取得 1F 營業前項目共 {len(items)} 項，前 5 項：")
     for it in items[:5]:
         print(f" [{it['itemId']}] [{it['category']}] {it['title']} ({it['frequency']})")
-
-    print('\n=== 6. 測試 極限組 6 人特別名單授權 (B113014 陳哲胤) ===')
-    res_extreme = post({'action': 'login', 'userId': 'B113014', 'password': '000000'})
-    token_extreme = res_extreme.get('data', {}).get('token')
-    if token_extreme:
-        depts_ext = get(f'action=get_user_depts&token={token_extreme}').get('data', {}).get('departments', [])
-        print("陳哲胤授權站點:", [d['deptId'] for d in depts_ext])
-
-    print('\n=== 7. 測試 本小舖雙向綁定 (B113083 柯又溱) ===')
-    res_benxiao = post({'action': 'login', 'userId': 'B113083', 'password': '000000'})
-    token_bx = res_benxiao.get('data', {}).get('token')
-    if token_bx:
-        depts_bx = get(f'action=get_user_depts&token={token_bx}').get('data', {}).get('departments', [])
-        print("柯又溱授權站點:", [d['deptId'] for d in depts_bx])
 
     print('\n=== 8. 測試 送出點檢 (submit_audit) 含異常標記與 LINE 通報字串產出 ===')
     mock_payload = {

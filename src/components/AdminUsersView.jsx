@@ -590,7 +590,7 @@ export default function AdminUsersView() {
                       setFormData({ ...formData, userId: e.target.value.toUpperCase() })
                     }
                     disabled={Boolean(editingUser)}
-                    placeholder="例如：B115050"
+                    placeholder="例如：B110001"
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-mono disabled:bg-slate-100 disabled:text-slate-400"
                     required
                   />

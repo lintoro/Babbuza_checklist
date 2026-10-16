@@ -76,7 +76,7 @@ export default function LoginModal() {
                 autoComplete="username"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                placeholder="例如：B115050"
+                placeholder="例如：B110001"
                 className="w-full px-3.5 py-2.5 pl-10 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all uppercase placeholder:normal-case placeholder:text-slate-400 font-mono"
                 required
               />

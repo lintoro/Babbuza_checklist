@@ -33,7 +33,7 @@
 * **後端架構**：Google Apps Script (GAS) Web App + Google Sheets 關聯式資料庫
   * **Google Apps Script 專案**：可透過 `.clasp.json` 連接（設定範本見下文）
   * **主試算表架構**：包含 Stations, Users, Items, Logs, Issues, Calendar 等標準標準化資料表
-  * **最新生產環境部署**：**`@37`**（全後端快取、批次 I/O、消除 N+1 讀表、RBAC 三階管理權限控管與防公式注入；前端 Code Splitting 與單一請求匯出）
+  * **最新生產環境部署**：**`@38`**（全庫去敏合規、全後端快取、批次 I/O、消除 N+1 讀表、RBAC 三階管理權限控管與防公式注入；前端 Code Splitting 與單一請求匯出）
 * **前端託管平台**：**Render** (Static Site)
   * **設定檔**：根目錄已配置 `render.yaml` 與 `.env.example`
   * **環境變數注入**：由 Render 後台 Dashboard 安全注入 `VITE_WEB_APP_URL`

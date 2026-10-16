@@ -5,7 +5,7 @@
 const Auth = {
   /**
    * 使用者登入
-   * @param {string} userId - 員工編號 (例: B115050)
+   * @param {string} userId - 員工編號 (例: B110001)
    * @param {string} password - 登入密碼
    */
   login: function(userId, password) {
@@ -234,9 +234,16 @@ const Auth = {
   },
 
   /**
-   * 初始化設定 B111155 為系統管理員 (ADMIN)
+   * 初始化設定系統管理員 (ADMIN)
+   * @param {string} targetUserId - 指定管理員工號 (若無傳入則讀取系統設定)
    */
-  initAdminB111155: function() {
+  initFirstAdmin: function(targetUserId) {
+    const adminId = String(
+      targetUserId ||
+      PropertiesService.getScriptProperties().getProperty('ADMIN_USER_ID') ||
+      'ADMIN'
+    ).trim().toUpperCase();
+
     const sheet = Utils.getSheet('Users');
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h).trim());
@@ -255,7 +262,7 @@ const Auth = {
 
     let foundIndex = -1;
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][idCol]).trim().toUpperCase() === 'B111155') {
+      if (String(data[i][idCol]).trim().toUpperCase() === adminId) {
         foundIndex = i;
         break;
       }
@@ -268,11 +275,11 @@ const Auth = {
       sheet.getRange(foundIndex + 1, mustChangeCol + 1).setValue(true);
       sheet.getRange(foundIndex + 1, statusCol + 1).setValue('ACTIVE');
       sheet.getRange(foundIndex + 1, updatedCol + 1).setValue(nowStr);
-      return { success: true, message: 'B111155 已成功更新為 ADMIN 並重設密碼為 000000' };
+      return { success: true, message: `管理員 [${adminId}] 已成功更新為 ADMIN 並重設密碼為 000000` };
     } else {
-      // 若原先名冊中無 B111155，則直接新增
-      sheet.appendRow(['B111155', '系統管理員', 'ADMIN', hash, salt, true, 1, 'ACTIVE', '', nowStr, nowStr]);
-      return { success: true, message: '已建立 B111155 系統管理員帳號 (密碼 000000)' };
+      // 若原先名冊中無該管理員，則直接新增
+      sheet.appendRow([adminId, '系統管理員', 'ADMIN', hash, salt, true, 1, 'ACTIVE', '', nowStr, nowStr]);
+      return { success: true, message: `已建立管理員 [${adminId}] 系統管理員帳號 (密碼 000000)` };
     }
   },
 
@@ -514,8 +521,8 @@ const Auth = {
     }
 
     const cleanId = String(targetUserId).trim().toUpperCase();
-    if (cleanId === 'B111155') {
-      return { success: false, error: '系統主要管理員帳號不可刪除' };
+    if (currentUser && cleanId === String(currentUser.userId).trim().toUpperCase()) {
+      return { success: false, error: '不可刪除當前登入之管理員帳號' };
     }
 
     const usersSheet = Utils.getSheet('Users');
