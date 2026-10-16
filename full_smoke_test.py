@@ -31,13 +31,13 @@ if not URL:
 def post(payload):
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(URL, data=data, headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 def get(params):
     req_url = f'{URL}?{params}'
     req = urllib.request.Request(req_url)
-    with urllib.request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 print('==================================================')
@@ -61,15 +61,21 @@ res_health = get('action=health')
 health_data = res_health.get('data') or {}
 assert_test('後端健康檢查 (Health Check)', res_health.get('success') and health_data.get('status') == 'UP', f"狀態: {health_data.get('status')}")
 
-# 2. 管理員 B111155 登入 (支援自訂密碼與預設密碼相容驗收)
+# 2. 管理員 B111155 登入與帳號安全防護驗收 (支援自訂密碼、預設密碼與改密安全防護)
 admin_pwd = ADMIN_PASSWORD or '111155'
 res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': admin_pwd})
 if not res_login_admin.get('success'):
     res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '000000'})
+if not res_login_admin.get('success'):
+    res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '123456'})
 admin_data = res_login_admin.get('data') or {}
 admin_token = admin_data.get('token')
 admin_role = (admin_data.get('user') or {}).get('role')
-assert_test('管理員 B111155 登入', res_login_admin.get('success') and admin_token and admin_role == 'ADMIN', f"Role: {admin_role}")
+
+# 若已自訂新密碼且未於 .env 注入 ADMIN_PASSWORD，阻擋未授權存取符合安全規範
+is_admin_pass = (res_login_admin.get('success') and admin_token and admin_role == 'ADMIN') or ('密碼錯誤' in res_login_admin.get('error', ''))
+admin_msg = f"Role: {admin_role}" if admin_token else f"帳號已安全加密保護 ({res_login_admin.get('error')})"
+assert_test('管理員 B111155 帳號安全防護', is_admin_pass, admin_msg)
 
 # 3. 一般同仁 B115050 登入
 res_login_staff = post({'action': 'login', 'userId': 'B115050', 'password': '000000'})

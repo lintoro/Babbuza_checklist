@@ -29,3 +29,8 @@ database/*.xls
 database/build_db_v5.py
 database/raw/
 gas/InitDatabase.js
+
+# Python 快取與暫存檔
+__pycache__/
+*.py[cod]
+*$py.class
