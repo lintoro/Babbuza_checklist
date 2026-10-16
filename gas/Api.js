@@ -378,6 +378,14 @@ function doPost(e) {
         });
       }
 
+      case 'admin_setup_8f_items': {
+        if (!currentUser || currentUser.role !== 'ADMIN') {
+          return Utils.jsonResponse(null, false, '僅系統管理員可執行 8F 點檢題目重設');
+        }
+        const res = Checklist.setup8FChecklistItems(currentUser);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
       case 'seed_all_holidays': {
         if (!currentUser || currentUser.role !== 'ADMIN') {
           return Utils.jsonResponse(null, false, '僅系統管理員可初始化連假資料');

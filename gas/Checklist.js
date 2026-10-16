@@ -759,5 +759,140 @@ const Checklist = {
       deletedDetailsCount: deletedDetailsCount,
       deletedHandoverCount: deletedHandoverCount
     };
+  },
+
+  /**
+   * 管理維護：全面置換 8F 點檢題目清冊 (OPEN: 20項, CLOSE: 25項含營運中服務處)
+   */
+  setup8FChecklistItems: function(currentUser) {
+    if (!currentUser || currentUser.role !== 'ADMIN') {
+      return { success: false, error: '權限不足，僅系統管理員可配置 8F 點檢項目' };
+    }
+
+    const sheet = Utils.getSheet('Check_Items');
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+
+    const idCol = headers.indexOf('Item_ID');
+    const deptCol = headers.indexOf('Dept_ID');
+    const stageCol = headers.indexOf('Stage');
+    const catCol = headers.indexOf('Category');
+    const titleCol = headers.indexOf('Title');
+    const typeCol = headers.indexOf('Item_Type');
+    const freqCol = headers.indexOf('Frequency');
+    const sortCol = headers.indexOf('Sort_Order');
+    const activeCol = headers.indexOf('Is_Active');
+
+    if (idCol === -1 || deptCol === -1 || stageCol === -1 || catCol === -1 || titleCol === -1) {
+      return { success: false, error: 'Check_Items 缺少必要標題欄位' };
+    }
+
+    // 1. 清理舊有 8F 項目 (自下而上物理刪除)
+    let removedCount = 0;
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][deptCol]).trim().toUpperCase() === '8F') {
+        sheet.deleteRow(i + 1);
+        removedCount++;
+      }
+    }
+
+    // 2. 定義新版 8F 點檢項目清單
+    const newItems = [
+      // === 8F OPEN (營業前準備) 20 項 ===
+      // 場域維護 (4項)
+      { stage: 'OPEN', cat: '場域維護', title: '黑龍(DIY、貨梯前)' },
+      { stage: 'OPEN', cat: '場域維護', title: '電視、燈箱' },
+      { stage: 'OPEN', cat: '場域維護', title: '冷氣' },
+      { stage: 'OPEN', cat: '場域維護', title: '環境整潔' },
+      // 文化館 (12項)
+      { stage: 'OPEN', cat: '文化館', title: '投影機' },
+      { stage: 'OPEN', cat: '文化館', title: '電腦主機' },
+      { stage: 'OPEN', cat: '文化館', title: '音響設備' },
+      { stage: 'OPEN', cat: '文化館', title: '燈光設備' },
+      { stage: 'OPEN', cat: '文化館', title: '體驗設備-海洋沉靜互動區' },
+      { stage: 'OPEN', cat: '文化館', title: '體驗設備-健身房' },
+      { stage: 'OPEN', cat: '文化館', title: '體驗設備-祖靈的祝福' },
+      { stage: 'OPEN', cat: '文化館', title: '沙灘燈光' },
+      { stage: 'OPEN', cat: '文化館', title: '香氛' },
+      { stage: 'OPEN', cat: '文化館', title: '椰樹擺飾' },
+      { stage: 'OPEN', cat: '文化館', title: '地毯清潔度' },
+      { stage: 'OPEN', cat: '文化館', title: '展示物(要拍照)' },
+      // DIY、文化館 POS機 (4項)
+      { stage: 'OPEN', cat: 'DIY、文化館 POS機', title: '開機確認結帳日期正確' },
+      { stage: 'OPEN', cat: 'DIY、文化館 POS機', title: '發票信用卡紙捲備品檢查' },
+      { stage: 'OPEN', cat: 'DIY、文化館 POS機', title: '零用金複點舖錢(每袋6200元)' },
+      { stage: 'OPEN', cat: 'DIY、文化館 POS機', title: 'POS正反螢幕正確顯示' },
+
+      // === 8F CLOSE (營業後整理) 25 項 ===
+      // DIY、文化館 POS機 (5項)
+      { stage: 'CLOSE', cat: 'DIY、文化館 POS機', title: '信用卡簽單清點' },
+      { stage: 'CLOSE', cat: 'DIY、文化館 POS機', title: '營收清點' },
+      { stage: 'CLOSE', cat: 'DIY、文化館 POS機', title: '零用金清點' },
+      { stage: 'CLOSE', cat: 'DIY、文化館 POS機', title: 'POS清機' },
+      { stage: 'CLOSE', cat: 'DIY、文化館 POS機', title: '信用卡清機' },
+      // 文化館 (9項)
+      { stage: 'CLOSE', cat: '文化館', title: '投影機' },
+      { stage: 'CLOSE', cat: '文化館', title: '電腦主機' },
+      { stage: 'CLOSE', cat: '文化館', title: '音響設備' },
+      { stage: 'CLOSE', cat: '文化館', title: '燈光設備' },
+      { stage: 'CLOSE', cat: '文化館', title: '沙灘燈光' },
+      { stage: 'CLOSE', cat: '文化館', title: '香氛' },
+      { stage: 'CLOSE', cat: '文化館', title: '椰樹擺飾' },
+      { stage: 'CLOSE', cat: '文化館', title: '地毯清潔度' },
+      { stage: 'CLOSE', cat: '文化館', title: '展示物(要拍照)' },
+      // 店務回報 (3項)
+      { stage: 'CLOSE', cat: '店務回報', title: '業績回報' },
+      { stage: 'CLOSE', cat: '店務回報', title: '任務交接' },
+      { stage: 'CLOSE', cat: '店務回報', title: '入金+換鈔' },
+      // 場域維護 (4項)
+      { stage: 'CLOSE', cat: '場域維護', title: '黑龍(DIY、貨梯前)' },
+      { stage: 'CLOSE', cat: '場域維護', title: '電視、燈箱' },
+      { stage: 'CLOSE', cat: '場域維護', title: '冷氣' },
+      { stage: 'CLOSE', cat: '場域維護', title: '環境整潔' },
+      // 服務處 (4項，營運中常態歸入 CLOSE)
+      { stage: 'CLOSE', cat: '服務處', title: '親切招呼' },
+      { stage: 'CLOSE', cat: '服務處', title: '驗票' },
+      { stage: 'CLOSE', cat: '服務處', title: '場域動線指引' },
+      { stage: 'CLOSE', cat: '服務處', title: '客訴問題處理' }
+    ];
+
+    let openOrder = 0;
+    let closeOrder = 0;
+    let openCount = 0;
+    let closeCount = 0;
+
+    const rowsToAppend = [];
+    newItems.forEach(item => {
+      const isO = item.stage === 'OPEN';
+      const seq = isO ? ++openCount : ++closeCount;
+      const itemId = `ITM-8F-${isO ? 'O' : 'C'}${String(seq).padStart(2, '0')}`;
+      const sortOrder = isO ? (openOrder += 10) : (closeOrder += 10);
+
+      const row = new Array(headers.length).fill('');
+      if (idCol !== -1) row[idCol] = itemId;
+      if (deptCol !== -1) row[deptCol] = '8F';
+      if (stageCol !== -1) row[stageCol] = item.stage;
+      if (catCol !== -1) row[catCol] = item.cat;
+      if (titleCol !== -1) row[titleCol] = item.title;
+      if (typeCol !== -1) row[typeCol] = 'CHECK';
+      if (freqCol !== -1) row[freqCol] = 'DAILY';
+      if (sortCol !== -1) row[sortCol] = sortOrder;
+      if (activeCol !== -1) row[activeCol] = true;
+
+      rowsToAppend.push(row);
+    });
+
+    if (rowsToAppend.length > 0) {
+      const startRow = sheet.getLastRow() + 1;
+      sheet.getRange(startRow, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    }
+
+    return {
+      success: true,
+      message: `8F 點檢項目已成功全面重設！舊項目移除 ${removedCount} 筆，全新匯入 ${rowsToAppend.length} 筆（開店 OPEN: ${openCount} 項，閉店 CLOSE: ${closeCount} 項）`,
+      openCount: openCount,
+      closeCount: closeCount,
+      totalCount: rowsToAppend.length
+    };
   }
 };
