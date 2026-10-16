@@ -12,12 +12,67 @@ function doGet(e) {
       case 'health':
       case 'ping': {
         const ss = Utils.getSpreadsheet();
-        return Utils.jsonResponse({
+        const baseInfo = {
           status: 'UP',
           appName: 'Babbuza Checklist App',
           spreadsheet: ss.getName(),
-          time: Utils.formatDateTime()
-        });
+          time: Utils.formatDateTime(),
+          version: '2.5.0-prod'
+        };
+
+        if (params.deep === 'true' || params.probe === 'system') {
+          // 執行系統級深層探針檢查 (生產安全唯讀自檢)
+          const tables = ['Users', 'Departments', 'User_Depts', 'Check_Items', 'Audit_Logs', 'Handover_Notes', 'Calendar'];
+          const tableStatus = {};
+          tables.forEach(tableName => {
+            const sheet = ss.getSheetByName(tableName);
+            tableStatus[tableName] = {
+              exists: Boolean(sheet),
+              rowCount: sheet ? sheet.getLastRow() : 0
+            };
+          });
+
+          // 站點規格檢查
+          const depts = Utils.sheetToObjects('Departments') || [];
+          const activeDepts = depts.filter(d => Boolean(d.Is_Active === true || String(d.Is_Active).toUpperCase() === 'TRUE'));
+          const diyExcluded = !activeDepts.some(d => String(d.Dept_ID).trim().toUpperCase() === 'DIY');
+
+          // 題目規格檢查
+          const items = Utils.sheetToObjects('Check_Items') || [];
+          const activeItems = items.filter(i => String(i.Is_Active).toUpperCase() !== 'FALSE');
+
+          // 異常池與交接狀態
+          const notes = Utils.sheetToObjects('Handover_Notes') || [];
+          const unresolvedNotes = notes.filter(n => String(n.Status).toUpperCase() === 'OPEN');
+
+          baseInfo.deepProbe = {
+            tables: tableStatus,
+            allTablesHealthy: tables.every(t => tableStatus[t].exists),
+            stationCheck: {
+              totalStations: depts.length,
+              activeStations: activeDepts.length,
+              diyExcluded: diyExcluded
+            },
+            itemCheck: {
+              totalItems: items.length,
+              activeItems: activeItems.length
+            },
+            issuePoolCheck: {
+              totalIssues: notes.length,
+              unresolvedCount: unresolvedNotes.length
+            },
+            timeFormatCheck: {
+              sampleStationTime: activeDepts.length > 0 ? {
+                openStart: String(activeDepts[0].Open_Start_Time || ''),
+                openEnd: String(activeDepts[0].Open_Deadline || ''),
+                closeStart: String(activeDepts[0].Close_Start_Time || ''),
+                closeEnd: String(activeDepts[0].Close_Deadline || '')
+              } : null
+            }
+          };
+        }
+
+        return Utils.jsonResponse(baseInfo);
       }
 
       case 'get_user_depts': {

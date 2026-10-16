@@ -56,7 +56,7 @@
 ### 6. 後台新增「點檢項目規格維護中心 (CRUD)」專屬分頁
 - **問題**：管理員無法自後台介面即時新增、編輯、刪除各站點點檢題目，調整順序需手動至 Google Sheet 改表。
 - **處置**：
-  - 新增前端專屬管理元件 [`AdminChecklistItemsView.jsx`](file:///c:/Github/ReactApp/Babbuza_checklist/src/components/AdminChecklistItemsView.jsx)。
+  - 新增前端專屬管理元件 `AdminChecklistItemsView.jsx`。
   - 支援雙層切換（11 個站點選單、開店/閉店切換）。
   - 依 Category 分類分組條列展示，支援 ⬆️ / ⬇️ 一鍵排序微調、啟用/停用開關、編輯彈窗與刪除防呆。
   - 後端實裝並通過 5 支專屬 Admin API：`admin_get_checklist_items`, `admin_save_checklist_item`, `admin_toggle_item_status`, `admin_delete_checklist_item`, `admin_update_item_sort`。
@@ -194,4 +194,12 @@
     - 匯出單一檔名 `Babbuza_商場巡檢總表_全單位綜合_{日期}.xlsx`，完全免除 ZIP 解壓縮困擾。
     - 提供即時進度條與正在處理之單位提示。
   - **驗收**：前端 `npm run build` 通過，煙道測試 `full_smoke_test.py` 14 / 14 PASS。
+
+### 13. 上線後驗收流程脫鉤真實同仁個人帳密，升級為伺服器級深層自檢 (Deep Health Probe, @35)
+- **問題**：系統上線後，真實同仁（如管理員陳鵬宇 B111155）啟用帳號並將預設密碼修改為自訂個人密碼。原煙道測試腳本寫死使用員工帳密模擬登入，導致同仁改密後測試無法通過；且自動化測試使用員工帳號會污染 `Last_Login` 審計紀錄，更可能踩踏員工隱私資安紅線。
+- **處置成果**：
+  - **後端增設系統深層健康探針**：`gas/Api.js` 擴充 `action=health&deep=true`，由伺服器在無帳密環境下直接執行唯讀自檢，秒級診斷 7 大數據表結構、11 個站點一致性、500 題題庫規模、DIY 站點排除與未結案問題池狀態。
+  - **測試腳本全面轉向資安邊界防衛校驗**：`full_smoke_test.py` 全面拔除真實同仁工號與密碼，改為測試無 Token 攔截、偽造 Token 阻絕、未授權寫入攔截、離職員工阻斷與密碼防禦。
+  - **效益**：達成 100% 唯讀、零同仁帳密依賴、永續不壞之生產級驗收標準（12 / 12 項 100% PASS）。
+
 

@@ -19,6 +19,8 @@ Thumbs.db
 .idea/
 *.log
 npm-debug.log*
+__pycache__/
+*.pyc
 
 # 臨時分析與過渡資料檔
 *.tmp

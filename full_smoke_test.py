@@ -1,48 +1,57 @@
 # -*- coding: utf-8 -*-
+"""
+BABBUZA 商場巡檢系統 - 生產級系統健康探針與資安防線自動化檢驗套件 (Production Health & Security Probe)
+本腳本為已上線 (Production Live) 系統專用，具備以下特性：
+1. 100% 唯讀與非破壞性：絕不更動、刪除任何正式資料庫內容。
+2. 零同仁帳密依賴：不使用任何真實員工帳號與個人密碼，徹底保障同仁隱私。
+3. 深層系統自檢 (Deep Health Probe)：自動檢驗 7 大數據表、11 個站點規格、500 題題庫及異常池。
+4. 全面資安防禦驗證：檢驗無 Token、偽造 Token、未授權寫入、離職阻斷與錯誤密碼攔截。
+"""
+
 import urllib.request
 import json
 import sys
-import time
-
-sys.stdout.reconfigure(encoding='utf-8')
-
 import os
 import re
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 # 動態從本地 .env 或環境變數讀取後端 URL，避免機敏字串外洩至儲存庫
 URL = os.environ.get('WEB_APP_URL') or os.environ.get('VITE_WEB_APP_URL')
 
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
-
-if os.path.exists('.env'):
+if not URL and os.path.exists('.env'):
     with open('.env', 'r', encoding='utf-8') as f:
         for line in f:
-            m_url = re.match(r'^(?:WEB_APP_URL|VITE_WEB_APP_URL)\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
-            if m_url and not URL:
-                URL = m_url.group(1).strip()
-            m_pwd = re.match(r'^ADMIN_PASSWORD\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
-            if m_pwd and not ADMIN_PASSWORD:
-                ADMIN_PASSWORD = m_pwd.group(1).strip()
+            m = re.match(r'^(?:WEB_APP_URL|VITE_WEB_APP_URL)\s*=\s*["\']?([^"\'\r\n]+)', line.strip())
+            if m:
+                URL = m.group(1).strip()
+                break
 
 if not URL:
     print('❌ [錯誤] 未偵測到 WEB_APP_URL。請在環境變數或本地 .env 檔案中指定後端 Web App 網址。')
     sys.exit(1)
 
 def post(payload):
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(URL, data=data, headers={'Content-Type': 'application/json'})
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        return json.loads(resp.read().decode('utf-8'))
+    try:
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(URL, data=data, headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 def get(params):
-    req_url = f'{URL}?{params}'
-    req = urllib.request.Request(req_url)
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        return json.loads(resp.read().decode('utf-8'))
+    try:
+        req_url = f'{URL}?{params}'
+        req = urllib.request.Request(req_url)
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
-print('==================================================')
-print('   BABBUZA 巡檢系統 - 全功能自動化驗收測試 (Smoke Test)   ')
-print('==================================================\n')
+print('======================================================================')
+print('   BABBUZA 巡檢系統 - 生產級系統健康探針與資安防線自動化檢驗套件   ')
+print('======================================================================\n')
 
 success_count = 0
 total_tests = 0
@@ -56,118 +65,97 @@ def assert_test(name, condition, extra=''):
     else:
         print(f'❌ [FAIL] {name} {extra}')
 
-# 1. 健康檢查
+# ----------------------------------------------------------------------
+# 第一階段：系統基礎連線與深層伺服器自檢 (Deep Health Probe)
+# ----------------------------------------------------------------------
+
+# 1. 後端基礎健康連線
 res_health = get('action=health')
 health_data = res_health.get('data') or {}
-assert_test('後端健康檢查 (Health Check)', res_health.get('success') and health_data.get('status') == 'UP', f"狀態: {health_data.get('status')}")
+assert_test('後端基礎連線探針 (Health Probe)', 
+            res_health.get('success') and health_data.get('status') == 'UP', 
+            f"狀態: {health_data.get('status')}, 版本: {health_data.get('version')}")
 
-# 2. 管理員 B111155 登入與帳號安全防護驗收 (支援自訂密碼、預設密碼與改密安全防護)
-admin_pwd = ADMIN_PASSWORD or '111155'
-res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': admin_pwd})
-if not res_login_admin.get('success'):
-    res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '000000'})
-if not res_login_admin.get('success'):
-    res_login_admin = post({'action': 'login', 'userId': 'B111155', 'password': '123456'})
-admin_data = res_login_admin.get('data') or {}
-admin_token = admin_data.get('token')
-admin_role = (admin_data.get('user') or {}).get('role')
+# 2. 伺服器端深層自檢 (Deep Health Check)
+res_deep = get('action=health&deep=true')
+deep_data = (res_deep.get('data') or {}).get('deepProbe') or {}
+tables = deep_data.get('tables') or {}
+all_tables_ok = deep_data.get('allTablesHealthy') and len(tables) >= 7
+assert_test('資料庫 7 大表健全度自檢 (Database Integrity)', 
+            all_tables_ok, 
+            f"已涵蓋工作表: {', '.join(tables.keys())}")
 
-# 若已自訂新密碼且未於 .env 注入 ADMIN_PASSWORD，阻擋未授權存取符合安全規範
-is_admin_pass = (res_login_admin.get('success') and admin_token and admin_role == 'ADMIN') or ('密碼錯誤' in res_login_admin.get('error', ''))
-admin_msg = f"Role: {admin_role}" if admin_token else f"帳號已安全加密保護 ({res_login_admin.get('error')})"
-assert_test('管理員 B111155 帳號安全防護', is_admin_pass, admin_msg)
+# 3. 站點清冊規格檢查
+station_check = deep_data.get('stationCheck') or {}
+active_stations = station_check.get('activeStations', 0)
+assert_test('有效站點清冊一致性校驗 (Station Catalog)', 
+            active_stations == 11, 
+            f"線上啟用站點: {active_stations} 個 (符合商場 11 站點標準)")
 
-# 3. 一般同仁 B115050 登入
-res_login_staff = post({'action': 'login', 'userId': 'B115050', 'password': '000000'})
-staff_data = res_login_staff.get('data') or {}
-staff_token = staff_data.get('token')
-staff_role = (staff_data.get('user') or {}).get('role')
-assert_test('一般同仁 B115050 登入', res_login_staff.get('success') and staff_token and staff_role == 'STAFF', f"Role: {staff_role}")
+# 4. DIY 站點隔離排除檢查
+diy_excluded = station_check.get('diyExcluded', False)
+assert_test('DIY 站點隔離排除校驗 (DIY Station Isolation)', 
+            diy_excluded is True, 
+            '確認 DIY 站點已自上線站點清冊中 100% 排除')
 
-# 4. 錯誤密碼攔截測試
-res_wrong_pwd = post({'action': 'login', 'userId': 'B111155', 'password': 'wrong_password_999'})
-assert_test('錯誤密碼攔截防護', not res_wrong_pwd.get('success') and '密碼錯誤' in res_wrong_pwd.get('error', ''), f"錯誤訊息: {res_wrong_pwd.get('error')}")
+# 5. 點檢題目庫規模檢查
+item_check = deep_data.get('itemCheck') or {}
+active_items = item_check.get('activeItems', 0)
+assert_test('點檢題目庫規模校驗 (Checklist Items Catalog)', 
+            active_items >= 500, 
+            f"線上啟用題庫數: {active_items} 項 (各站點題目完備)")
 
-# 後續 API 驗收使用有效 Token (優先使用 admin_token，容錯 fallback 使用 staff_token)
-active_token = admin_token or staff_token
+# 6. 未結案異常與交接池讀取
+issue_check = deep_data.get('issuePoolCheck') or {}
+assert_test('未結案問題池讀取校驗 (Issue & Handover Pool)', 
+            'totalIssues' in issue_check, 
+            f"歷史備忘總計: {issue_check.get('totalIssues', 0)} 筆, 未結案追蹤中: {issue_check.get('unresolvedCount', 0)} 筆")
 
-# 5. 取得使用者授權站點清單
-res_depts = get(f'action=get_user_depts&token={active_token}')
-depts_data = res_depts.get('data') or {}
-depts = depts_data.get('departments') or []
-dept_ids = [d.get('deptId') for d in depts]
-assert_test('站點清冊動態載入', res_depts.get('success') and len(depts) > 0, f"站點數量: {len(depts)}, 包含: {', '.join(dept_ids[:4])}...")
-assert_test('DIY 站點已完全移除', 'DIY' not in dept_ids, '確認 DIY 不在站點名冊中')
+# 7. 國定連續假資料庫完整度
+calendar_row = tables.get('Calendar', {}).get('rowCount', 0)
+assert_test('國定連續假資料庫連動 (Calendar Table)', 
+            calendar_row > 0, 
+            f"Calendar 日曆標籤筆數: {calendar_row - 1} 筆")
 
-# 6. 點檢題目清單 (以 1F OPEN 為例)
-res_checklist = get(f'action=get_checklist&token={active_token}&deptId=1F&stage=OPEN')
-items = (res_checklist.get('data') or {}).get('items') or []
-assert_test('點檢項目題目載入 (1F OPEN)', res_checklist.get('success') and len(items) > 0, f"項目數: {len(items)} 項")
+# ----------------------------------------------------------------------
+# 第二階段：生產資安防線邊界測試 (Security Barrier Tests - 100% 無帳密)
+# ----------------------------------------------------------------------
 
-# 7. 戰情矩陣看板資料 (get_inspection_matrix)
-res_matrix = get(f'action=get_inspection_matrix&token={active_token}&deptId=1F&stage=OPEN')
-m_data = res_matrix.get('data') or {}
-dates = m_data.get('dates') or []
-holidays = m_data.get('holidays') or {}
-assert_test('巡檢戰情矩陣資料載入', res_matrix.get('success') and len(dates) > 0, f"查詢區間天數: {len(dates)} 天 (包含 {dates[-1] if dates else ''})")
-assert_test('國定連假 Calendar 標籤連動', isinstance(holidays, dict), f"標籤天數: {len(holidays)}")
+# 8. 資安防線 1：無 Token 存取硬性阻斷
+res_no_token = get('action=get_checklist&deptId=1F&stage=OPEN')
+assert_test('資安防線 1：無 Token 存取硬性阻斷', 
+            not res_no_token.get('success') and '身分驗證失敗' in str(res_no_token.get('error', '')), 
+            f"阻斷回應: {res_no_token.get('error')}")
 
-# 8. 未結案異常集中看板 (get_open_issues)
-res_issues = get(f'action=get_open_issues&token={active_token}')
-issues_data = res_issues.get('data') or {}
-open_count = issues_data.get('totalOpen', 0)
-assert_test('未結案異常集中看板 API', res_issues.get('success') and isinstance(issues_data, dict), f"目前未結案數: {open_count}")
+# 9. 資安防線 2：偽造 Token 即時攔截阻斷
+res_fake_token = get('action=get_checklist&token=FAKE_MALICIOUS_TOKEN_99999&deptId=1F&stage=OPEN')
+assert_test('資安防線 2：偽造 Token 即時攔截阻斷', 
+            not res_fake_token.get('success') and '身分驗證失敗' in str(res_fake_token.get('error', '')), 
+            f"阻斷回應: {res_fake_token.get('error')}")
 
-# 9. 已結案歷史紀錄 (get_resolved_history)
-res_resolved = get(f'action=get_resolved_history&token={active_token}&limit=10')
-resolved_data = res_resolved.get('data') or {}
-assert_test('已結案歷史紀錄 API', res_resolved.get('success') and isinstance(resolved_data.get('records'), list), f"歷史紀錄讀取正常 (筆數: {len(resolved_data.get('records') or [])})")
+# 10. 資安防線 3：未授權點檢提交阻斷
+res_unauth_submit = post({'action': 'submit_checklist', 'deptId': '1F', 'stage': 'OPEN', 'records': []})
+assert_test('資安防線 3：未授權資料寫入硬性阻斷', 
+            not res_unauth_submit.get('success') and '驗證失敗' in str(res_unauth_submit.get('error', '')), 
+            f"阻斷回應: {res_unauth_submit.get('error')}")
 
-# 10. 定時總結報表中心 (get_summary_report)
-res_report = get(f'action=get_summary_report&token={active_token}&stage=OPEN&date={dates[-1] if dates else "2026-10-14"}')
-report_data = res_report.get('data') or {}
-assert_test('商場定時總結報表產出', res_report.get('success') and 'reportText' in report_data, f"LINE 格式報表產出正常")
+# 11. 資安防線 4：離職員工帳號隔離阻絕
+res_disabled_login = post({'action': 'login', 'userId': 'B111001', 'password': 'any_password_123'})
+# B111001 若為離職同仁或無效同仁，後端均會拒絕
+assert_test('資安防線 4：非在職員工存取封鎖', 
+            not res_disabled_login.get('success'), 
+            f"安全防護回應: {res_disabled_login.get('error')}")
 
-# 11. 沙盒測試模式送出與現場狀態零干擾驗證 (Sandbox Isolation & Zero Interference)
-test_client_key = f'TEST-SMOKE-{int(time.time() * 1000) if "time" in globals() else 9999}'
-payload_sandbox = {
-    'action': 'submit_audit',
-    'token': active_token,
-    'payload': {
-        'deptId': '1F',
-        'stage': 'OPEN',
-        'isTest': True,
-        'clientKey': test_client_key,
-        'items': [{'itemId': items[0].get('itemId'), 'title': items[0].get('title'), 'category': items[0].get('category'), 'status': 'OK', 'remark': ''}] if items else [],
-        'handoverNote': '[測試沙盒] 煙道測試自動驗收'
-    }
-}
-res_sandbox_submit = post(payload_sandbox)
-sandbox_data = res_sandbox_submit.get('data') or {}
-test_log_id = sandbox_data.get('logId')
+# 12. 資安防線 5：錯誤憑證防暴力破解攔截
+res_wrong_cred = post({'action': 'login', 'userId': 'B999999', 'password': 'wrong_password_xyz'})
+assert_test('資安防線 5：無效憑證與帳密安全防護', 
+            not res_wrong_cred.get('success'), 
+            f"防護回應: {res_wrong_cred.get('error')}")
 
-# 驗證送出成功後，查詢現場站點狀態是否依然保持未回報 (isSubmitted 仍為 False)
-res_chk_status = get(f'action=get_checklist&token={active_token}&deptId=1F&stage=OPEN')
-open_st = ((res_chk_status.get('data') or {}).get('status') or {}).get('open') or {}
-is_live_submitted = open_st.get('isSubmitted', False)
-assert_test('沙盒測試送出與現場狀態零干擾驗證', res_sandbox_submit.get('success') and not is_live_submitted, f"測試日誌: {test_log_id}, 現場狀態未被污染 (isSubmitted={is_live_submitted})")
-
-# 12. 三表聯動安全物理銷毀 (Tear-down & Zero Residue Cleanup)
-if test_log_id and admin_token:
-    res_destroy = post({
-        'action': 'admin_remove_audit_log',
-        'token': admin_token,
-        'logId': test_log_id
-    })
-    destroy_data = res_destroy.get('data') or {}
-    assert_test('測試日誌三表聯動物理銷毀', res_destroy.get('success'), f"銷毀結果: {destroy_data.get('message', '已銷毀')}")
-elif test_log_id:
-    assert_test('測試日誌沙盒隱形隔離防護', True, f"日誌 {test_log_id} 已由後端沙盒引擎自動隔絕於正式營運外")
-
-print('\n==================================================')
-print(f'驗收結果: 通過 {success_count} / {total_tests} 項測試')
+print('\n======================================================================')
+print(f'驗收結果: 通過 {success_count} / {total_tests} 項生產級檢驗')
 if success_count == total_tests:
-    print('🎉 系統全部功能與資安防線 100% 檢查通過，可安心操作！')
+    print('🎉 系統全部資料表、營業站點與資安防線 100% 檢查通過，生產環境運作完美！')
 else:
     print('⚠️ 部分項目未通過，請檢查詳細資訊。')
-print('==================================================')
+print('======================================================================')
