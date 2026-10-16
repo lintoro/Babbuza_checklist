@@ -16,6 +16,8 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
   };
 
   const isAdmin = user?.role === 'ADMIN';
+  const isSupervisor = user?.role === 'SUPERVISOR';
+  const isManager = isAdmin || isSupervisor;
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
@@ -30,7 +32,11 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
               Babbuza 巡檢
             </h1>
             <span className="text-[10px] text-slate-400 font-medium">
-              {viewMode === 'admin' ? '系統管理後台中心' : '商場日常點檢系統'}
+              {viewMode === 'admin'
+                ? isAdmin
+                  ? '系統管理後台中心'
+                  : '巡檢主管戰情中心'
+                : '商場日常點檢系統'}
             </span>
           </div>
         </div>
@@ -38,8 +44,8 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
         {/* 右側操作按鈕 */}
         {user && (
           <div className="flex items-center space-x-1.5 sm:space-x-2">
-            {/* 管理員專用：切換後台管理 / 巡檢作業 */}
-            {isAdmin && (
+            {/* 管理員與巡店主管專用：切換後台管理 / 巡檢作業 */}
+            {isManager && (
               <button
                 type="button"
                 onClick={onToggleViewMode}
@@ -48,7 +54,7 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
                     ? 'bg-purple-100 text-purple-700 border border-purple-200'
                     : 'bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700'
                 }`}
-                title={viewMode === 'admin' ? '返回巡檢點檢作業' : '切換至系統管理後台'}
+                title={viewMode === 'admin' ? '返回巡檢點檢作業' : '切換至管理戰情後台'}
               >
                 {viewMode === 'admin' ? (
                   <>
@@ -58,7 +64,7 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
                 ) : (
                   <>
                     <Users className="w-3.5 h-3.5 text-purple-600" />
-                    <span className="hidden sm:inline">後台管理</span>
+                    <span className="hidden sm:inline">{isAdmin ? '後台管理' : '戰情管理'}</span>
                   </>
                 )}
               </button>
@@ -70,8 +76,13 @@ export default function Navbar({ onOpenChangePwd, viewMode, onToggleViewMode }) 
               <User className="w-3.5 h-3.5 text-slate-500" />
               <span className="font-medium max-w-16 truncate">{user.name}</span>
               {isAdmin && (
-                <span className="text-[10px] bg-purple-200 text-purple-800 px-1 py-0.2 rounded font-bold">
+                <span className="text-[10px] bg-purple-200 text-purple-800 px-1 py-0.2 rounded font-bold" title="系統管理員">
                   管
+                </span>
+              )}
+              {isSupervisor && (
+                <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-200 px-1 py-0.2 rounded font-bold" title="巡店主管">
+                  督
                 </span>
               )}
             </div>

@@ -562,8 +562,8 @@ const Checklist = {
    * 管理員取得特定站點與時段之所有點檢項目 (含啟用與停用中)
    */
   adminGetChecklistItems: function(deptId, stage, currentUser) {
-    if (!currentUser || currentUser.role !== 'ADMIN') {
-      return { success: false, error: '權限不足，僅系統管理員可維護點檢項目' };
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERVISOR')) {
+      return { success: false, error: '權限不足，僅系統管理員與巡店主管可維護點檢項目' };
     }
     const cleanDept = String(deptId || '1F').trim().toUpperCase();
     const cleanStage = String(stage || 'OPEN').trim().toUpperCase();
@@ -600,8 +600,8 @@ const Checklist = {
    * 管理員儲存點檢項目 (新增或更新)
    */
   adminSaveChecklistItem: function(payload, currentUser) {
-    if (!currentUser || currentUser.role !== 'ADMIN') {
-      return { success: false, error: '權限不足，僅系統管理員可儲存點檢項目' };
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERVISOR')) {
+      return { success: false, error: '權限不足，僅系統管理員與巡店主管可儲存點檢項目' };
     }
     if (!payload || !payload.deptId || !payload.title) {
       return { success: false, error: '缺少站點或題目名稱' };
@@ -674,8 +674,8 @@ const Checklist = {
    * 管理員切換點檢項目啟用/停用
    */
   adminToggleItemStatus: function(itemId, isActive, currentUser) {
-    if (!currentUser || currentUser.role !== 'ADMIN') {
-      return { success: false, error: '權限不足，僅系統管理員可修改項目狀態' };
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERVISOR')) {
+      return { success: false, error: '權限不足，僅系統管理員與巡店主管可修改項目狀態' };
     }
     const cleanItemId = String(itemId).trim();
     const sheet = Utils.getSheet('Check_Items');
@@ -698,8 +698,8 @@ const Checklist = {
    * 管理員刪除點檢項目
    */
   adminDeleteItem: function(itemId, currentUser) {
-    if (!currentUser || currentUser.role !== 'ADMIN') {
-      return { success: false, error: '權限不足，僅系統管理員可刪除項目' };
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERVISOR')) {
+      return { success: false, error: '權限不足，僅系統管理員與巡店主管可刪除項目' };
     }
     const cleanItemId = String(itemId).trim();
     const sheet = Utils.getSheet('Check_Items');
@@ -721,8 +721,8 @@ const Checklist = {
    * 管理員更新項目排序 (使用 Map 與單次 setValues 批次寫入)
    */
   adminUpdateItemSort: function(orderedItemIds, currentUser) {
-    if (!currentUser || currentUser.role !== 'ADMIN') {
-      return { success: false, error: '權限不足，僅系統管理員可調整排序' };
+    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPERVISOR')) {
+      return { success: false, error: '權限不足，僅系統管理員與巡店主管可調整排序' };
     }
     if (!Array.isArray(orderedItemIds) || orderedItemIds.length === 0) {
       return { success: false, error: '缺少排序清單' };

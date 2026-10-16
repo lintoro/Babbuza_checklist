@@ -255,8 +255,8 @@ export default function App() {
 
       {/* 主體工作區塊 */}
       <main className="max-w-xl mx-auto px-4 pt-4 space-y-4">
-        {/* 管理員後台視圖 */}
-        {viewMode === 'admin' && user.role === 'ADMIN' ? (
+        {/* 管理員與巡店主管後台視圖 (依角色權限動態呈現頁籤) */}
+        {viewMode === 'admin' && (user.role === 'ADMIN' || user.role === 'SUPERVISOR') ? (
           <div className="space-y-4">
             {/* 管理後台切換頁籤 Tabs */}
             <div className="bg-white p-1 rounded-2xl border border-slate-200/80 shadow-xs flex items-center">
@@ -286,31 +286,37 @@ export default function App() {
                 <span>點檢項目</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setAdminTab('stations')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
-                  adminTab === 'stations'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <Store className="w-3.5 h-3.5" />
-                <span>站點規格</span>
-              </button>
+              {/* 站點規格 (僅 ADMIN 系統管理員) */}
+              {user.role === 'ADMIN' && (
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('stations')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+                    adminTab === 'stations'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  <span>站點規格</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setAdminTab('users')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
-                  adminTab === 'users'
-                    ? 'bg-purple-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>人員名冊</span>
-              </button>
+              {/* 人員名冊 (僅 ADMIN 系統管理員) */}
+              {user.role === 'ADMIN' && (
+                <button
+                  type="button"
+                  onClick={() => setAdminTab('users')}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+                    adminTab === 'users'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>人員名冊</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -326,7 +332,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* 根據頁籤渲染對應元件 (以 Suspense 包裹動態載入之組件) */}
+            {/* 根據頁籤渲染對應元件 (以 Suspense 包裹動態載入之組件，並加入主管越權防呆保護) */}
             <Suspense
               fallback={
                 <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-xs flex flex-col items-center justify-center space-y-3 text-purple-600">
@@ -335,13 +341,13 @@ export default function App() {
                 </div>
               }
             >
-              {adminTab === 'warroom' ? (
+              {adminTab === 'warroom' || (user.role !== 'ADMIN' && (adminTab === 'stations' || adminTab === 'users')) ? (
                 <AdminWarRoomView />
               ) : adminTab === 'items' ? (
                 <AdminChecklistItemsView />
-              ) : adminTab === 'stations' ? (
+              ) : adminTab === 'stations' && user.role === 'ADMIN' ? (
                 <AdminStationsView />
-              ) : adminTab === 'users' ? (
+              ) : adminTab === 'users' && user.role === 'ADMIN' ? (
                 <AdminUsersView />
               ) : (
                 <AdminReportsView />

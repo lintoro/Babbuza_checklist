@@ -381,36 +381,43 @@ function doPost(e) {
       }
 
       case 'admin_save_department': {
+        Utils.requireRole(currentUser, ['ADMIN']);
         const res = Checklist.saveDepartment(body.payload, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_toggle_dept_status': {
+        Utils.requireRole(currentUser, ['ADMIN']);
         const res = Checklist.toggleDepartmentStatus(body.deptId, body.isActive, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_update_dept_sort': {
+        Utils.requireRole(currentUser, ['ADMIN']);
         const res = Checklist.updateDepartmentSort(body.orderedDeptIds, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_save_checklist_item': {
+        Utils.requireRole(currentUser, ['ADMIN', 'SUPERVISOR']);
         const res = Checklist.adminSaveChecklistItem(body.payload, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_toggle_item_status': {
+        Utils.requireRole(currentUser, ['ADMIN', 'SUPERVISOR']);
         const res = Checklist.adminToggleItemStatus(body.itemId, body.isActive, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_delete_checklist_item': {
+        Utils.requireRole(currentUser, ['ADMIN', 'SUPERVISOR']);
         const res = Checklist.adminDeleteItem(body.itemId, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
       case 'admin_update_item_sort': {
+        Utils.requireRole(currentUser, ['ADMIN', 'SUPERVISOR']);
         const res = Checklist.adminUpdateItemSort(body.orderedItemIds, currentUser);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }

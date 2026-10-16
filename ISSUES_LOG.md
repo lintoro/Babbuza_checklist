@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-10-16 三階管理權責 (RBAC) 深度優化與功能分權落地
+
+### 巡店主管 (SUPERVISOR) 權責升級與資安隔離
+- **背景與需求**：
+  先前系統僅限制 `ADMIN` 能進入後台，`SUPERVISOR` 在功能上等同於一般員工，無法發揮營運管理與督導價值。經討論確定落實三階管理權責：
+  1. **STAFF (現場同仁)**：執行者，僅限所屬站點開閉店點檢與現場異常提報。
+  2. **SUPERVISOR (巡店主管)**：監督與督導者，開放戰情中心看板、未結案異常督辦、定時 LINE 總結報表產出，並開放【點檢項目規格】維護（增刪改查與排序）。
+  3. **ADMIN (系統管理員)**：總管理者，獨家掌管【站點規格與連假同步】以及【人員名冊/改密碼/停用】。
+- **處置**：
+  1. `src/components/Navbar.jsx`：將切換後台按鈕權限開放為 `isAdmin || isSupervisor`，主管新增「督」專屬藍色徽章。
+  2. `src/App.jsx`：開放主管進入後台，頁籤動態過濾僅顯示「即時戰情」、「點檢項目」、「總結報表」；「站點規格」與「人員名冊」僅限 `ADMIN` 顯示，並加入主管越權防呆自動 fallback 回戰情中心。
+  3. `gas/Checklist.js`：將點檢項目之讀取 (`adminGetChecklistItems`)、儲存 (`adminSaveChecklistItem`)、狀態切換 (`adminToggleItemStatus`)、刪除 (`adminDeleteItem`) 與排序 (`adminUpdateItemSort`) 權限放寬為允許 `ADMIN` 與 `SUPERVISOR`。
+  4. `gas/Api.js`：站點規格 API (`admin_save_department` 等) 嚴格限定 `ADMIN`；題目 API 支援 `['ADMIN', 'SUPERVISOR']`。
+  5. 雲端同步：代碼已推播至 Google Apps Script 雲端並發布為第 **`@37`** 版。
+
+---
+
 ## 2026-10-16 後台人員名冊顯示與多階排序微調
 
 ### 人員名冊預設狀態與階層排序優化

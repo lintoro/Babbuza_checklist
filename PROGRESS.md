@@ -9,7 +9,7 @@
 | 項目 | 當前狀態 / 版本 | 備註說明 |
 | :--- | :--- | :--- |
 | **前端環境** | React 18 + Vite + Tailwind CSS | 託管於 Render (Static Site)，支援 SPA Rewrite |
-| **後端環境** | Google Apps Script (GAS) Web App | 最新部署版本：**`@36`**（全後端快取、批次 I/O 與 RBAC 守衛） |
+| **後端環境** | Google Apps Script (GAS) Web App | 最新部署版本：**`@37`**（全後端快取、批次 I/O 與 RBAC 三階權限授權） |
 | **資料庫** | Google Sheets 關聯式試算表架構 | `_MasterDB`（含 Users, Stations, Check_Items, Audit_Logs 等） |
 | **時區規範** | `Asia/Taipei` (UTC+8) | 後端試算表底層引擎與前端顯示全面強制綁定台北時區 |
 | **資安檢核** | Security Gate 0 全面通過 | 儲存庫 0 機敏洩漏，受控僅含 `.env.example` |
@@ -30,6 +30,10 @@
 - [x] **即時備忘與全員結案**：現場隨選即看未結案異常與交接卡片，支援現場一鍵核銷結案。
 
 ### 2. 管理後台戰情中心 (Admin Center) - 進度：100% 完成
+- [x] **三階管理權責架構 (RBAC)**：
+  - **STAFF**：專注現場打勾點檢與異常提報，無後台入口。
+  - **SUPERVISOR (巡店主管)**：開放戰情中心（矩陣/Excel 匯出）、未結案異常督辦、定時 LINE 總結報表、以及【點檢項目規格】維護。
+  - **ADMIN (系統管理員)**：具備全功能，且獨家掌管【站點規格】與【人員名冊/密碼重設】。
 - [x] **即時巡檢戰情矩陣 (`AdminWarRoomView`)**：
   - 15 天滾動式矩陣看板，完整重現原始 Excel 結構（打勾圖記、同仁姓名、精確送出時間）。
   - 國定假日與連續假期自動標籤（藍色休館、橘色連假）。
