@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { apiGet, apiPost, getTaipeiDateString } from '../api';
 import {
@@ -20,7 +21,9 @@ import {
   X,
   MessageSquare,
   Search,
-  Filter
+  Filter,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 
 const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -124,6 +127,50 @@ function formatDateHeader(dateStr, customHolidays = {}) {
   return `${mmdd}(${dayName})`;
 }
 
+/**
+ * 將巡檢戰情矩陣資料轉換為 XLSX 工作表物件
+ */
+function createMatrixWorksheet(matrixData) {
+  if (!matrixData || !matrixData.items) return null;
+  const dates = matrixData.dates || [];
+
+  // 建立表頭列
+  const headerRow = [
+    '大類別',
+    '點檢項目',
+    ...dates.map((d) => formatDateHeader(d, matrixData.holidays))
+  ];
+  const rows = [headerRow];
+
+  // 填入每一列題目與日期紀錄
+  matrixData.items.forEach((item) => {
+    const cat = item.category || '';
+    const title = item.title || '';
+    const rowCols = dates.map((d) => {
+      const rec = item.records?.[d];
+      if (!rec || !rec.executed) return '未執行';
+      const statusZh = rec.status === 'OK' ? '正常' : rec.status === 'NG' ? '異常' : '不適用';
+      const remark = rec.remark ? ` [${rec.remark}]` : '';
+      const execTime = formatShortTime(rec.submitTime);
+      const execInfo = rec.executor ? ` (${rec.executor} ${execTime})` : '';
+      return `${statusZh}${execInfo}${remark}`;
+    });
+    rows.push([cat, title, ...rowCols]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // 自適應欄寬
+  const colWidths = [
+    { wch: 18 },
+    { wch: 32 },
+    ...dates.map(() => ({ wch: 24 }))
+  ];
+  ws['!cols'] = colWidths;
+
+  return ws;
+}
+
 export default function AdminWarRoomView() {
   const { token, user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState('matrix'); // 'matrix' | 'issues' | 'resolved'
@@ -138,6 +185,13 @@ export default function AdminWarRoomView() {
   const [loadingMatrix, setLoadingMatrix] = useState(false);
   const [departments, setDepartments] = useState([]);
   const tableContainerRef = useRef(null);
+
+  // 匯出相關狀態 (單一單位雙分頁與多單位批次單一總表)
+  const [isExportingSingle, setIsExportingSingle] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [selectedDeptIds, setSelectedDeptIds] = useState([]);
+  const [isExportingBatch, setIsExportingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentName: '' });
 
   // 2. 未結案異常集中看板狀態
   const [issuesData, setIssuesData] = useState(null);
@@ -157,7 +211,9 @@ export default function AdminWarRoomView() {
     try {
       const res = await apiGet({ action: 'get_user_depts', token });
       if (res.success && res.data) {
-        setDepartments(res.data.departments || []);
+        const list = res.data.departments || [];
+        setDepartments(list);
+        setSelectedDeptIds(list.map((d) => d.deptId)); // 預設全選所有單位
       }
     } catch (err) {
       console.warn('載入站點失敗', err);
@@ -281,35 +337,120 @@ export default function AdminWarRoomView() {
     }
   };
 
-  // 原始 Excel 檢視匯出 (CSV 格式含 UTF-8 BOM)
-  const handleExportExcel = () => {
-    if (!matrixData || !matrixData.items) return;
+  // 1. 匯出當前單位完整 Excel (包含開店與閉店雙分頁)
+  const handleExportCurrentDept = async () => {
+    if (!deptId) return;
+    setIsExportingSingle(true);
+    try {
+      const curDeptObj = departments.find((d) => d.deptId === deptId);
+      const deptName = curDeptObj?.deptName || deptId;
 
-    const dates = matrixData.dates || [];
-    // 建立 CSV 標題列
-    let csv = '\uFEFF'; // UTF-8 BOM 避免 Excel 亂碼
-    csv += `"大類別","點檢項目",${dates.map((d) => `"${formatDateHeader(d, matrixData.holidays)}"`).join(',')}\n`;
+      // 同時請求該單位的 OPEN 與 CLOSE 矩陣
+      const [resOpen, resClose] = await Promise.all([
+        apiGet({ action: 'get_inspection_matrix', token, deptId, stage: 'OPEN' }),
+        apiGet({ action: 'get_inspection_matrix', token, deptId, stage: 'CLOSE' })
+      ]);
 
-    // 填寫每一列
-    matrixData.items.forEach((item) => {
-      const cat = (item.category || '').replace(/"/g, '""');
-      const title = (item.title || '').replace(/"/g, '""');
-      const rowCols = dates.map((d) => {
-        const rec = item.records?.[d];
-        if (!rec || !rec.executed) return '"未執行"';
-        const statusZh = rec.status === 'OK' ? '正常' : rec.status === 'NG' ? '異常' : '不適用';
-        const remark = rec.remark ? ` [${rec.remark}]` : '';
-        return `"${statusZh} (${rec.executor} ${formatShortTime(rec.submitTime)})${remark}"`;
-      });
-      csv += `"${cat}","${title}",${rowCols.join(',')}\n`;
-    });
+      const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${matrixData.deptName || matrixData.deptId}_巡檢戰情矩陣_${matrixData.stage}_${dates[0] || ''}_${dates[dates.length - 1] || ''}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+      if (resOpen?.success && resOpen?.data) {
+        const wsOpen = createMatrixWorksheet(resOpen.data);
+        if (wsOpen) XLSX.utils.book_append_sheet(wb, wsOpen, '營業前 (開店)');
+      }
+
+      if (resClose?.success && resClose?.data) {
+        const wsClose = createMatrixWorksheet(resClose.data);
+        if (wsClose) XLSX.utils.book_append_sheet(wb, wsClose, '營業後 (閉店)');
+      }
+
+      const todayStr = getTaipeiDateString();
+      XLSX.writeFile(wb, `${deptName}_巡檢戰情報表_${todayStr}.xlsx`);
+    } catch (err) {
+      console.error('匯出單一單位失敗:', err);
+      alert('匯出 Excel 發生錯誤，請稍後再試');
+    } finally {
+      setIsExportingSingle(false);
+    }
+  };
+
+  // 勾選/取消單一單位
+  const toggleDeptSelection = (id) => {
+    setSelectedDeptIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // 切換全選 / 全取消
+  const toggleSelectAll = () => {
+    if (selectedDeptIds.length === departments.length) {
+      setSelectedDeptIds([]);
+    } else {
+      setSelectedDeptIds(departments.map((d) => d.deptId));
+    }
+  };
+
+  // 2. 批次匯出選取單位之綜合 Excel 總表 (單一檔案包含所有選取單位的開店/閉店分頁)
+  const handleExportBatchDepts = async () => {
+    const targetDeptIds = departments
+      .map((d) => d.deptId)
+      .filter((id) => selectedDeptIds.includes(id));
+
+    if (targetDeptIds.length === 0) {
+      alert('請至少勾選一個要下載的單位！');
+      return;
+    }
+
+    setIsExportingBatch(true);
+    setBatchProgress({ current: 0, total: targetDeptIds.length, currentName: '' });
+
+    try {
+      const wb = XLSX.utils.book_new();
+      const todayStr = getTaipeiDateString();
+
+      for (let i = 0; i < targetDeptIds.length; i++) {
+        const dId = targetDeptIds[i];
+        const deptObj = departments.find((d) => d.deptId === dId);
+        const deptName = deptObj?.deptName || dId;
+
+        setBatchProgress({
+          current: i + 1,
+          total: targetDeptIds.length,
+          currentName: deptName
+        });
+
+        // 讀取該單位之 OPEN 與 CLOSE 矩陣
+        const [resOpen, resClose] = await Promise.all([
+          apiGet({ action: 'get_inspection_matrix', token, deptId: dId, stage: 'OPEN' }),
+          apiGet({ action: 'get_inspection_matrix', token, deptId: dId, stage: 'CLOSE' })
+        ]);
+
+        // Excel 分頁標籤限制 31 字元以內，且不可有特殊字元
+        const cleanDeptPrefix = deptName.replace(/[:\\/?*\[\]]/g, '').slice(0, 22);
+
+        if (resOpen?.success && resOpen?.data) {
+          const wsOpen = createMatrixWorksheet(resOpen.data);
+          if (wsOpen) {
+            XLSX.utils.book_append_sheet(wb, wsOpen, `${cleanDeptPrefix}-開店`);
+          }
+        }
+
+        if (resClose?.success && resClose?.data) {
+          const wsClose = createMatrixWorksheet(resClose.data);
+          if (wsClose) {
+            XLSX.utils.book_append_sheet(wb, wsClose, `${cleanDeptPrefix}-閉店`);
+          }
+        }
+      }
+
+      // 下載單一綜合 Excel 檔案
+      XLSX.writeFile(wb, `Babbuza_商場巡檢總表_全單位綜合_${todayStr}.xlsx`);
+      setIsBatchModalOpen(false);
+    } catch (err) {
+      console.error('批次匯出失敗:', err);
+      alert('批次匯出 Excel 發生錯誤，請稍後再試');
+    } finally {
+      setIsExportingBatch(false);
+    }
   };
 
   return (
@@ -382,15 +523,32 @@ export default function AdminWarRoomView() {
             </div>
 
             <div className="flex items-center space-x-2 self-end sm:self-auto">
-              {/* 原始 Excel 檢視匯出按鈕 */}
+              {/* 匯出目前單位 Excel (含開店/閉店雙分頁) */}
               <button
                 type="button"
-                onClick={handleExportExcel}
-                disabled={loadingMatrix || !matrixData}
+                onClick={() => handleExportCurrentDept(deptId)}
+                disabled={isExportingSingle || isExportingBatch}
                 className="inline-flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                title="匯出目前單位的開店前與營業後雙分頁 Excel 檔案"
+              >
+                {isExportingSingle ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                )}
+                <span>匯出目前單位 (雙分頁)</span>
+              </button>
+
+              {/* 批次勾選匯出總表按鈕 */}
+              <button
+                type="button"
+                onClick={() => setIsBatchModalOpen(true)}
+                disabled={isExportingSingle || isExportingBatch}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                title="勾選多個或全部單位，匯出包含所有單位的單一 Excel 總表"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>原始 Excel 匯出 (CSV)</span>
+                <span>批次勾選匯出總表</span>
               </button>
 
               {/* 重新整理 */}
@@ -1004,6 +1162,142 @@ export default function AdminWarRoomView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 批次勾選匯出總表彈窗 */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">批次勾選匯出商場巡檢總表</h4>
+                  <p className="text-[11px] text-slate-400">
+                    下載單一 Excel 檔案，內含所選各單位的開店前與營業後分頁
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isExportingBatch && setIsBatchModalOpen(false)}
+                disabled={isExportingBatch}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-30 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 說明與控制按鈕 */}
+            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 text-xs">
+              <span className="font-medium text-slate-600">
+                已選取 <span className="font-bold text-indigo-600">{selectedDeptIds.length}</span> / {departments.length} 個單位
+              </span>
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                disabled={isExportingBatch}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {selectedDeptIds.length === departments.length ? (
+                  <>
+                    <Square className="w-3.5 h-3.5" />
+                    <span>全部取消</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>全部選取</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* 單位勾選網格清單 */}
+            <div className="max-h-60 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {departments.map((dept) => {
+                const isChecked = selectedDeptIds.includes(dept.deptId);
+                return (
+                  <label
+                    key={dept.deptId}
+                    className={`flex items-center space-x-2.5 p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
+                      isChecked
+                        ? 'bg-indigo-50/50 border-indigo-300 text-indigo-950 shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    } ${isExportingBatch ? 'pointer-events-none opacity-60' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleDeptSelection(dept.deptId)}
+                      disabled={isExportingBatch}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div className="truncate">
+                      <div className="font-bold truncate">{dept.deptName}</div>
+                      <div className="text-[10px] text-slate-400">{dept.deptId}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* 匯出進度指示條 */}
+            {isExportingBatch && (
+              <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-200/80 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-indigo-900">
+                  <div className="flex items-center space-x-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                    <span>正在獲取資料：{batchProgress.currentName}...</span>
+                  </div>
+                  <span>
+                    {batchProgress.current} / {batchProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-indigo-200/60 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${(batchProgress.current / Math.max(batchProgress.total, 1)) * 100}%`
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 操作按鈕 */}
+            <div className="flex items-center space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsBatchModalOpen(false)}
+                disabled={isExportingBatch}
+                className="flex-1 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleExportBatchDepts}
+                disabled={isExportingBatch || selectedDeptIds.length === 0}
+                className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center justify-center space-x-1.5 shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {isExportingBatch ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>正在產生綜合總表...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>確認匯出單一 Excel ({selectedDeptIds.length} 個單位)</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
