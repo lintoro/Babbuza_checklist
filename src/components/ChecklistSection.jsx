@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Check,
   X,
@@ -58,15 +58,17 @@ export default function ChecklistSection({
   const isNotOpenYet = currentMinutes < startMinutes;
   const isOverdue = currentMinutes > deadlineMinutes;
 
-  // 分組依據 Category
-  const groupedItems = items.reduce((acc, item) => {
-    const cat = item.category || '一般項目';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(item);
-    return acc;
-  }, {});
+  // 使用 useMemo 快取分組結果，避免文字輸入觸發重複 reduce
+  const groupedItems = useMemo(() => {
+    return items.reduce((acc, item) => {
+      const cat = item.category || '一般項目';
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(item);
+      return acc;
+    }, {});
+  }, [items]);
 
-  const categories = Object.keys(groupedItems);
+  const categories = useMemo(() => Object.keys(groupedItems), [groupedItems]);
 
   // 控制各分類的摺疊狀態（預設全展開）
   const [collapsedCategories, setCollapsedCategories] = useState({});
@@ -78,16 +80,24 @@ export default function ChecklistSection({
     }));
   };
 
-  // 計算目前完成度
-  const totalCount = items.length;
-  const completedCount = items.filter(
-    (item) => itemStates[item.itemId]?.status
-  ).length;
-  const ngCount = items.filter(
-    (item) => itemStates[item.itemId]?.status === 'NG'
-  ).length;
-  const progressPercent =
-    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  // 使用 useMemo 快取完成度統計
+  const { totalCount, completedCount, ngCount, progressPercent } = useMemo(() => {
+    const total = items.length;
+    let completed = 0;
+    let ng = 0;
+    items.forEach((item) => {
+      const st = itemStates[item.itemId]?.status;
+      if (st) completed++;
+      if (st === 'NG') ng++;
+    });
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return {
+      totalCount: total,
+      completedCount: completed,
+      ngCount: ng,
+      progressPercent: percent,
+    };
+  }, [items, itemStates]);
 
   return (
     <div className="space-y-4">

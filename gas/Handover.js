@@ -110,10 +110,9 @@ const Handover = {
 
     // Headers: Note_ID(1), Biz_Date(2), Dept_ID(3), Type(4), Source_Log_ID(5), Source_Item_ID(6),
     //          Content(7), Reporter_ID(8), Assignee_ID(9), Status(10), Resolution(11), Resolved_By(12), Resolved_At(13), Created_At(14)
-    sheet.getRange(rowIndex, 10).setValue('RESOLVED');
-    sheet.getRange(rowIndex, 11).setValue(String(resolution || '已確認處理完成').trim());
-    sheet.getRange(rowIndex, 12).setValue(resolverInfo);
-    sheet.getRange(rowIndex, 13).setValue(nowTime);
+    const cleanResolution = Utils.sanitizeSheetInput(String(resolution || '已確認處理完成').trim());
+    sheet.getRange(rowIndex, 10, 1, 4).setValues([['RESOLVED', cleanResolution, resolverInfo, nowTime]]);
+    Utils.invalidateCache('Handover_Notes');
 
     return {
       success: true,
@@ -126,35 +125,59 @@ const Handover = {
 
   /**
    * 自動核銷逾期交接備忘 (超過指定天數，預設 3 天未結案之交接項目自動結案)
+   * 記憶體批次更新，單次 setValues 寫入
    * @param {number} days - 逾期天數，預設 3
    */
   autoArchiveExpiredHandovers: function(days) {
     try {
       const expireDays = typeof days === 'number' ? days : 3;
       const sheet = Utils.getSheet('Handover_Notes');
-      const allNotes = Utils.sheetToObjects('Handover_Notes');
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return 0;
+
+      const headers = data[0].map(h => String(h).trim());
+      const typeCol = headers.indexOf('Type');
+      const statusCol = headers.indexOf('Status');
+      const resCol = headers.indexOf('Resolution');
+      const resByCol = headers.indexOf('Resolved_By');
+      const resAtCol = headers.indexOf('Resolved_At');
+      const createdCol = headers.indexOf('Created_At');
+
+      if (statusCol === -1 || typeCol === -1) return 0;
+
       const now = Date.now();
       const expireMs = expireDays * 24 * 60 * 60 * 1000;
       const nowTime = Utils.formatDateTime();
       let archivedCount = 0;
 
-      allNotes.forEach(note => {
-        const isHandover = String(note.Type).trim().toUpperCase() === 'HANDOVER';
-        const isOpen = String(note.Status).trim().toUpperCase() === 'OPEN';
-        if (!isHandover || !isOpen) return;
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const isHandover = String(row[typeCol]).trim().toUpperCase() === 'HANDOVER';
+        const isOpen = String(row[statusCol]).trim().toUpperCase() === 'OPEN';
+        if (!isHandover || !isOpen) continue;
 
-        const createTime = new Date(note.Created_At).getTime();
-        if (!createTime || isNaN(createTime)) return;
+        const createVal = row[createdCol];
+        let createTime = null;
+        if (createVal instanceof Date) {
+          createTime = createVal.getTime();
+        } else if (createVal) {
+          createTime = new Date(createVal).getTime();
+        }
+        if (!createTime || isNaN(createTime)) continue;
 
         if (now - createTime >= expireMs) {
-          const rowIndex = note._rowIndex;
-          sheet.getRange(rowIndex, 10).setValue('RESOLVED');
-          sheet.getRange(rowIndex, 11).setValue('系統自動核銷（交接逾3日無異常）');
-          sheet.getRange(rowIndex, 12).setValue('系統自動核銷');
-          sheet.getRange(rowIndex, 13).setValue(nowTime);
+          row[statusCol] = 'RESOLVED';
+          if (resCol !== -1) row[resCol] = '系統自動核銷（交接逾3日無異常）';
+          if (resByCol !== -1) row[resByCol] = '系統自動核銷';
+          if (resAtCol !== -1) row[resAtCol] = nowTime;
           archivedCount++;
         }
-      });
+      }
+
+      if (archivedCount > 0) {
+        sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+        Utils.invalidateCache('Handover_Notes');
+      }
       return archivedCount;
     } catch (e) {
       console.warn('autoArchiveExpiredHandovers error:', e);

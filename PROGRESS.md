@@ -9,11 +9,11 @@
 | 項目 | 當前狀態 / 版本 | 備註說明 |
 | :--- | :--- | :--- |
 | **前端環境** | React 18 + Vite + Tailwind CSS | 託管於 Render (Static Site)，支援 SPA Rewrite |
-| **後端環境** | Google Apps Script (GAS) Web App | 最新部署版本：**`@31`** |
+| **後端環境** | Google Apps Script (GAS) Web App | 最新部署版本：**`@36`**（全後端快取、批次 I/O 與 RBAC 守衛） |
 | **資料庫** | Google Sheets 關聯式試算表架構 | `_MasterDB`（含 Users, Stations, Check_Items, Audit_Logs 等） |
 | **時區規範** | `Asia/Taipei` (UTC+8) | 後端試算表底層引擎與前端顯示全面強制綁定台北時區 |
 | **資安檢核** | Security Gate 0 全面通過 | 儲存庫 0 機敏洩漏，受控僅含 `.env.example` |
-| **煙道驗收** | 14 / 14 項 100% PASS | `python full_smoke_test.py` 全功能自動化測試通過 |
+| **煙道驗收** | 14 / 14 項 100% PASS | `python full_smoke_test.py` 全功能與資安攔截測試通過 |
 
 ---
 

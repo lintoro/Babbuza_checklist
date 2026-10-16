@@ -74,6 +74,12 @@ const Report = {
       return String(d).trim() === targetDate && !isTestNote;
     });
 
+    // 建立 Dept_ID -> Dept_Name 對照
+    const deptNameMap = new Map();
+    allDepts.forEach(d => {
+      deptNameMap.set(d.Dept_ID, d.Dept_Name || d.Dept_ID);
+    });
+
     // 5. 分類統計
     const onTimeList = [];
     const lateList = [];
@@ -81,7 +87,7 @@ const Report = {
 
     allDepts.forEach(dept => {
       const deptId = dept.Dept_ID;
-      const deptName = this.getDeptName(deptId, allDepts);
+      const deptName = dept.Dept_Name || deptId;
       const log = logMap[deptId];
       // 動態解析各站點截止時間 (透過 Checklist.resolveTime 進行合法範圍驗證，杜絕時差偏差)
       const rawDeadline = cleanStage === 'OPEN' ? dept.Open_Deadline : dept.Close_Deadline;
@@ -133,11 +139,14 @@ const Report = {
     const missingCount = missingList.length;
     const completionRate = totalStations > 0 ? Math.round((submittedCount / totalStations) * 100) : 0;
 
-    // 彙整異常項目清冊
+    // 彙整異常項目清冊 (使用 Map O(1) 查找)
+    const logById = new Map();
+    todayLogs.forEach(l => logById.set(l.Log_ID, l));
+
     const defectSummaries = [];
     defectDetails.forEach(d => {
-      const parentLog = todayLogs.find(l => l.Log_ID === d.Log_ID);
-      const dName = parentLog ? this.getDeptName(parentLog.Dept_ID, allDepts) : '未知站點';
+      const parentLog = logById.get(d.Log_ID);
+      const dName = parentLog ? (deptNameMap.get(parentLog.Dept_ID) || parentLog.Dept_ID) : '未知站點';
       defectSummaries.push({
         deptName: dName,
         category: d.Category_Snapshot || '一般',
@@ -146,11 +155,11 @@ const Report = {
       });
     });
 
-    // 彙整交接備忘
+    // 彙整交接備忘 (使用 Map O(1) 查找)
     const handoverSummaries = [];
     todayNotes.filter(n => n.Type === 'HANDOVER').forEach(n => {
       handoverSummaries.push({
-        deptName: this.getDeptName(n.Dept_ID, allDepts),
+        deptName: deptNameMap.get(n.Dept_ID) || n.Dept_ID,
         content: n.Content
       });
     });

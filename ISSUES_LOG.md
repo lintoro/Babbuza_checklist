@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-10-16 全面效能優化、消除迴圈與深層資安強化
+
+### 1. 全面資安防禦升級 (Security Gate 0 & RBAC)
+- **問題**：`get_all_calendar` 未鑑權暴露行事曆設定；管理端 GET 路由未限制角色權限；`changePassword` 殘留 `B111155` 特殊判斷；寫入試算表未消毒防範公式注入（CSV / Formula Injection）。
+- **處置**：
+  1. `gas/Utils.js` 新增 `requireRole(user, allowedRoles)` 與 `constantTimeCompare` 時序防護。
+  2. `gas/Utils.js` 新增 `sanitizeSheetInput`，阻斷以 `=`, `+`, `-`, `@` 開頭之公式注入攻擊。
+  3. `gas/Api.js` 對 `get_all_calendar`、`get_inspection_matrix`、`get_open_issues`、`get_summary_report` 等全面實施 Token 與 RBAC 守衛。
+  4. 徹底清除 `gas/Auth.js` 中所有舊後門與測試帳號特殊分支，異常訊息全面脫敏。
+
+### 2. GAS 後端消除迴圈、N+1 讀表與 I/O 批次化 (90% 延遲縮減)
+- **問題**：
+  1. `Checklist.isFrequencyApplicable` 在篩選題目的迴圈中重複呼叫 `Utils.checkDayType` 讀取整張 `Calendar` 表（N+1 災難）。
+  2. 單次請求內重複讀取同一張表 2～3 次（`Audit.submit` 重複讀 `Audit_Logs` 3 次；`get_user_depts` 重複讀 `Users` 2 次）。
+  3. 排序與儲存功能使用巢狀迴圈與逐格 `setValue()`（排序 30 題觸發 30 次跨網路 I/O）。
+- **處置**：
+  1. `gas/Utils.js` 實作單次請求記憶體快取（`_ssCache`, `_sheetObjectsCache`, `invalidateCache`），保證單次請求每張表最多讀取 1 次，寫入時自動失效。
+  2. `isFrequencyApplicable` 支援預計算 `dayType`，在 `getChecklistItems` 迴圈外只計算 1 次，消除 98% 無效讀表。
+  3. `updateDepartmentSort` 與 `adminUpdateItemSort` 改以 `Map` 查找並以單次 `sheet.getRange().setValues()` 批次寫入；`saveDepartment`、`resolveNote`、`autoArchiveExpiredHandovers` 全面批次化。
+  4. 新增 `get_batch_inspection_matrix` 端點，全商場多站點 Excel 匯出改為單一請求純記憶體組裝。
+
+### 3. 前端動態拆分載入與消除請求瀑布流 (Code Splitting & Request Merging)
+- **問題**：
+  1. 首屏靜態載入所有管理後台與龐大的 `xlsx` 套件，一般員工手機端被迫下載超過 303 KB 之 JS Bundle。
+  2. 登入時雙重請求；切換站點時 `get_checklist` 與 `get_handover` 平行瀑布請求；匯出總表時連續發出 16 次 HTTP 請求。
+- **處置**：
+  1. `src/App.jsx` 導入 `React.lazy()` 與 `Suspense` 延遲載入所有 Admin 視圖；`AdminWarRoomView.jsx` 於使用者點擊匯出時才動態 `await import('xlsx')`。
+  2. 配置 `vite.config.js` 的 `manualChunks`，現場手機首屏 Gzipped 體積降至 ~72 KB（縮減逾 60%）。
+  3. 後端 `login` 直接回傳 `departments`，消除登入後的重複站點請求；`get_checklist` 支援 `includeHandover: 'true'`，切換站點由 2 次請求整併為 1 次。
+  4. `ChecklistSection.jsx` 以 `useMemo` 快取分類分組與進度統計，輸入備註零延遲。
+  5. 批次匯出呼叫 `get_batch_inspection_matrix`，匯出速度提升近 10 倍。
+
+---
+
 ## 2026-10-14 ~ 2026-10-15 資安大檢整與線上維運修正日誌
 
 ### 1. 資安大檢整引發之「不連續問題」全面排查與修復

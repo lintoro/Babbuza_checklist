@@ -80,6 +80,17 @@ const Auth = {
     // 簽發 Token
     const tokenVersion = parseInt(user.Token_Version, 10) || 1;
     const token = Utils.generateToken(user.User_ID, user.Role, tokenVersion);
+    Utils.invalidateCache('Users');
+
+    // 順帶回傳可存取之站點，減少前端額外往返請求
+    let userDepts = [];
+    try {
+      if (typeof Checklist !== 'undefined' && Checklist.getUserDepartments) {
+        userDepts = Checklist.getUserDepartments(user);
+      }
+    } catch (e) {
+      console.warn('Get user departments during login failed:', e);
+    }
 
     return {
       success: true,
@@ -89,7 +100,8 @@ const Auth = {
         name: user.Name,
         role: user.Role,
         mustChangePwd: shouldForceChange
-      }
+      },
+      departments: userDepts
     };
   },
 
@@ -134,7 +146,7 @@ const Auth = {
       const cleanOldPwd = String(oldPassword).trim();
       const checkOldHash = Utils.sha256(cleanOldPwd, user.Salt || '');
       if (checkOldHash !== String(user.Password_Hash).trim()) {
-        if (!(cleanOldPwd === '000000' && (user.Must_Change_Pwd || cleanUserId === 'B111155'))) {
+        if (!(cleanOldPwd === '000000' && user.Must_Change_Pwd)) {
           return { success: false, error: '原舊密碼輸入錯誤' };
         }
       }
@@ -146,15 +158,14 @@ const Auth = {
     const currentTokenVersion = parseInt(user.Token_Version, 10) || 1;
     const newTokenVersion = currentTokenVersion + 1;
 
-    // 5. 更新 Users 表格
+    // 5. 批次更新 Users 表格
     // Headers: User_ID(1), Name(2), Role(3), Password_Hash(4), Salt(5), Must_Change_Pwd(6), Token_Version(7), Status(8), Last_Login(9), Created_At(10), Updated_At(11)
     const sheet = Utils.getSheet('Users');
     const rowIndex = user._rowIndex;
-    sheet.getRange(rowIndex, 4).setValue(newHash);           // Password_Hash
-    sheet.getRange(rowIndex, 5).setValue(newSalt);           // Salt
-    sheet.getRange(rowIndex, 6).setValue(false);             // Must_Change_Pwd
-    sheet.getRange(rowIndex, 7).setValue(newTokenVersion);   // Token_Version
+    // 一次性寫入 Password_Hash, Salt, Must_Change_Pwd, Token_Version (欄位 4~7)
+    sheet.getRange(rowIndex, 4, 1, 4).setValues([[newHash, newSalt, false, newTokenVersion]]);
     sheet.getRange(rowIndex, 11).setValue(Utils.formatDateTime()); // Updated_At
+    Utils.invalidateCache('Users');
 
     // 6. 簽發新 Token
     const newToken = Utils.generateToken(user.User_ID, user.Role, newTokenVersion);
@@ -480,11 +491,9 @@ const Auth = {
         const hash = Utils.sha256('000000', salt);
         const nextTokenVer = (parseInt(data[i][tokenVerCol], 10) || 1) + 1;
 
-        sheet.getRange(i + 1, hashCol + 1).setValue(hash);
-        sheet.getRange(i + 1, saltCol + 1).setValue(salt);
-        sheet.getRange(i + 1, mustChangeCol + 1).setValue(true);
-        sheet.getRange(i + 1, tokenVerCol + 1).setValue(nextTokenVer);
+        sheet.getRange(i + 1, hashCol + 1, 1, 4).setValues([[hash, salt, true, nextTokenVer]]);
         sheet.getRange(i + 1, updatedCol + 1).setValue(Utils.formatDateTime());
+        Utils.invalidateCache('Users');
 
         return {
           success: true,

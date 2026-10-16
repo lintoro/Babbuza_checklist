@@ -69,6 +69,9 @@ const Checklist = {
    * 管理員取得所有站點清單 (含現行營運與停用刪除)
    */
   getAllDepartments: function(currentUser) {
+    if (currentUser) {
+      Utils.requireRole(currentUser, ['ADMIN', 'SUPERVISOR']);
+    }
     const depts = Utils.sheetToObjects('Departments')
       .sort((a, b) => (parseInt(a.Sort_Order, 10) || 0) - (parseInt(b.Sort_Order, 10) || 0));
 
@@ -97,7 +100,7 @@ const Checklist = {
     }
 
     const deptId = String(deptData.deptId || '').trim().toUpperCase();
-    const deptName = String(deptData.deptName || '').trim();
+    const deptName = Utils.sanitizeSheetInput(String(deptData.deptName || '').trim());
     if (!deptId) return { success: false, error: '請填寫站點代碼' };
     if (!deptName) return { success: false, error: '請填寫站點名稱' };
 
@@ -145,15 +148,19 @@ const Checklist = {
     }
 
     if (targetRow !== -1) {
-      // 編輯更新既有站點
-      sheet.getRange(targetRow, nameCol + 1).setValue(deptName);
-      if (typeCol !== -1) sheet.getRange(targetRow, typeCol + 1).setValue(deptType);
-      sheet.getRange(targetRow, openDeadCol + 1).setValue(openDeadline);
-      sheet.getRange(targetRow, closeDeadCol + 1).setValue(closeDeadline);
-      sheet.getRange(targetRow, openStartCol + 1).setValue(openStartTime);
-      sheet.getRange(targetRow, closeStartCol + 1).setValue(closeStartTime);
-      if (sortCol !== -1) sheet.getRange(targetRow, sortCol + 1).setValue(sortOrder);
-      if (activeCol !== -1) sheet.getRange(targetRow, activeCol + 1).setValue(isActive);
+      // 編輯更新既有站點：記憶體內整列更新，單次批次寫入
+      const row = data[targetRow - 1];
+      if (nameCol !== -1) row[nameCol] = deptName;
+      if (typeCol !== -1) row[typeCol] = deptType;
+      if (openDeadCol !== -1) row[openDeadCol] = openDeadline;
+      if (closeDeadCol !== -1) row[closeDeadCol] = closeDeadline;
+      if (openStartCol !== -1) row[openStartCol] = openStartTime;
+      if (closeStartCol !== -1) row[closeStartCol] = closeStartTime;
+      if (sortCol !== -1) row[sortCol] = sortOrder;
+      if (activeCol !== -1) row[activeCol] = isActive;
+
+      sheet.getRange(targetRow, 1, 1, headers.length).setValues([row]);
+      Utils.invalidateCache('Departments');
 
       return {
         success: true,
@@ -174,11 +181,12 @@ const Checklist = {
       if (activeCol !== -1) newRow[activeCol] = isActive;
 
       sheet.appendRow(newRow);
+      Utils.invalidateCache('Departments');
 
       return {
         success: true,
         isNew: true,
-        message: `已新增站點 [${deptId}] ${deptName}！請記得配置點檢項目。`
+        message: `站點 [${deptId}] ${deptName} 已成功建立`
       };
     }
   },
@@ -244,15 +252,24 @@ const Checklist = {
       return { success: false, error: '試算表中查無 Sort_Order 欄位' };
     }
 
+    const orderMap = new Map();
     orderedDeptIds.forEach((deptId, index) => {
-      const cleanDept = String(deptId).trim().toUpperCase();
-      for (let i = 1; i < data.length; i++) {
-        if (String(data[i][idCol]).trim().toUpperCase() === cleanDept) {
-          sheet.getRange(i + 1, sortCol + 1).setValue((index + 1) * 10);
-          break;
-        }
-      }
+      orderMap.set(String(deptId).trim().toUpperCase(), (index + 1) * 10);
     });
+
+    let changed = false;
+    for (let i = 1; i < data.length; i++) {
+      const curDept = String(data[i][idCol]).trim().toUpperCase();
+      if (orderMap.has(curDept)) {
+        data[i][sortCol] = orderMap.get(curDept);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+      Utils.invalidateCache('Departments');
+    }
 
     return {
       success: true,
@@ -263,7 +280,7 @@ const Checklist = {
   /**
    * 判斷指定頻率是否應在目標日期執行
    */
-  isFrequencyApplicable: function(frequency, dateStr) {
+  isFrequencyApplicable: function(frequency, dateStr, precomputedDayType = null) {
     if (!frequency || frequency === 'DAILY' || frequency === 'CONTINUOUS') {
       return true;
     }
@@ -272,7 +289,7 @@ const Checklist = {
     const dayOfWeek = d.getDay(); // 0(日) ~ 6(六)
     const dayOfMonth = d.getDate();
     const month = d.getMonth() + 1; // 1 ~ 12
-    const dayType = Utils.checkDayType(dateStr);
+    const dayType = precomputedDayType || Utils.checkDayType(dateStr);
 
     switch (frequency) {
       case 'HOLIDAY':
@@ -298,13 +315,15 @@ const Checklist = {
     const cleanDept = String(deptId).trim().toUpperCase();
     const cleanStage = String(stage).trim().toUpperCase();
 
+    // 預先計算 1 次 dayType，徹底消除迴圈內反覆呼叫 checkDayType 的 N+1 讀表
+    const dayType = Utils.checkDayType(targetDate);
     const allItems = Utils.sheetToObjects('Check_Items');
     const deptItems = allItems.filter(item => {
       if (!Boolean(item.Is_Active)) return false;
       if (String(item.Dept_ID).trim().toUpperCase() !== cleanDept) return false;
       if (String(item.Stage).trim().toUpperCase() !== cleanStage) return false;
 
-      return this.isFrequencyApplicable(item.Frequency, targetDate);
+      return this.isFrequencyApplicable(item.Frequency, targetDate, dayType);
     });
 
     deptItems.sort((a, b) => (parseInt(a.Sort_Order, 10) || 0) - (parseInt(b.Sort_Order, 10) || 0));
@@ -413,9 +432,9 @@ const Checklist = {
              dates.includes(String(bDate).trim());
     });
 
-    const logIds = allLogs.map(l => String(l.Log_ID).trim());
+    const logIdSet = new Set(allLogs.map(l => String(l.Log_ID).trim()));
     const allDetails = Utils.sheetToObjects('Audit_Details').filter(d => {
-      return logIds.includes(String(d.Log_ID).trim());
+      return logIdSet.has(String(d.Log_ID).trim());
     });
 
     // 整理日誌快速對照表：logMap[date] = { logId, executorName, executorId, submitTime, isLate }
@@ -515,6 +534,31 @@ const Checklist = {
   },
 
   /**
+   * 批次取得多個站點之巡檢戰情矩陣 (專供 Excel 批次總表匯出，大幅縮減 HTTP 往返與讀表開銷)
+   * 享受 Request-Scope In-Memory 快取，單次請求讀取工作表僅需 1 次
+   */
+  getBatchInspectionMatrix: function(deptIds, stages = ['OPEN', 'CLOSE'], startDate, endDate) {
+    if (!Array.isArray(deptIds) || deptIds.length === 0) {
+      return { success: false, error: '缺少站點清單 deptIds' };
+    }
+
+    const result = {};
+    deptIds.forEach(deptId => {
+      stages.forEach(stg => {
+        const matrix = this.getInspectionMatrix(deptId, stg, startDate, endDate);
+        if (matrix && matrix.success) {
+          result[`${deptId}_${stg}`] = matrix;
+        }
+      });
+    });
+
+    return {
+      success: true,
+      matrices: result
+    };
+  },
+
+  /**
    * 管理員取得特定站點與時段之所有點檢項目 (含啟用與停用中)
    */
   adminGetChecklistItems: function(deptId, stage, currentUser) {
@@ -590,14 +634,18 @@ const Checklist = {
       const cleanItemId = String(payload.itemId).trim();
       for (let i = 1; i < data.length; i++) {
         if (String(data[i][idCol]).trim() === cleanItemId) {
-          if (deptCol !== -1) sheet.getRange(i + 1, deptCol + 1).setValue(cleanDept);
-          if (stageCol !== -1) sheet.getRange(i + 1, stageCol + 1).setValue(cleanStage);
-          if (catCol !== -1) sheet.getRange(i + 1, catCol + 1).setValue(cleanCategory);
-          if (titleCol !== -1) sheet.getRange(i + 1, titleCol + 1).setValue(cleanTitle);
-          if (typeCol !== -1) sheet.getRange(i + 1, typeCol + 1).setValue(payload.itemType || 'CHECK');
-          if (freqCol !== -1) sheet.getRange(i + 1, freqCol + 1).setValue(cleanFreq);
-          if (sortCol !== -1) sheet.getRange(i + 1, sortCol + 1).setValue(sortOrder);
-          if (activeCol !== -1) sheet.getRange(i + 1, activeCol + 1).setValue(isActive);
+          const row = data[i];
+          if (deptCol !== -1) row[deptCol] = cleanDept;
+          if (stageCol !== -1) row[stageCol] = cleanStage;
+          if (catCol !== -1) row[catCol] = cleanCategory;
+          if (titleCol !== -1) row[titleCol] = Utils.sanitizeSheetInput(cleanTitle);
+          if (typeCol !== -1) row[typeCol] = payload.itemType || 'CHECK';
+          if (freqCol !== -1) row[freqCol] = cleanFreq;
+          if (sortCol !== -1) row[sortCol] = sortOrder;
+          if (activeCol !== -1) row[activeCol] = isActive;
+
+          sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
+          Utils.invalidateCache('Check_Items');
 
           return { success: true, message: `點檢項目 [${cleanTitle}] 已更新成功` };
         }
@@ -611,13 +659,14 @@ const Checklist = {
     if (deptCol !== -1) newRow[deptCol] = cleanDept;
     if (stageCol !== -1) newRow[stageCol] = cleanStage;
     if (catCol !== -1) newRow[catCol] = cleanCategory;
-    if (titleCol !== -1) newRow[titleCol] = cleanTitle;
+    if (titleCol !== -1) newRow[titleCol] = Utils.sanitizeSheetInput(cleanTitle);
     if (typeCol !== -1) newRow[typeCol] = payload.itemType || 'CHECK';
     if (freqCol !== -1) newRow[freqCol] = cleanFreq;
     if (sortCol !== -1) newRow[sortCol] = sortOrder;
     if (activeCol !== -1) newRow[activeCol] = isActive;
 
     sheet.appendRow(newRow);
+    Utils.invalidateCache('Check_Items');
     return { success: true, message: `已成功新增點檢項目 [${cleanTitle}]`, itemId: newItemId };
   },
 
@@ -638,6 +687,7 @@ const Checklist = {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][idCol]).trim() === cleanItemId) {
         sheet.getRange(i + 1, activeCol + 1).setValue(Boolean(isActive));
+        Utils.invalidateCache('Check_Items');
         return { success: true, message: `項目狀態已切換為 ${isActive ? '啟用' : '停用'}` };
       }
     }
@@ -660,6 +710,7 @@ const Checklist = {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][idCol]).trim() === cleanItemId) {
         sheet.deleteRow(i + 1);
+        Utils.invalidateCache('Check_Items');
         return { success: true, message: '點檢項目已成功刪除' };
       }
     }
@@ -667,7 +718,7 @@ const Checklist = {
   },
 
   /**
-   * 管理員更新項目排序
+   * 管理員更新項目排序 (使用 Map 與單次 setValues 批次寫入)
    */
   adminUpdateItemSort: function(orderedItemIds, currentUser) {
     if (!currentUser || currentUser.role !== 'ADMIN') {
@@ -682,15 +733,28 @@ const Checklist = {
     const idCol = headers.indexOf('Item_ID');
     const sortCol = headers.indexOf('Sort_Order');
 
+    if (sortCol === -1) {
+      return { success: false, error: '試算表中查無 Sort_Order 欄位' };
+    }
+
+    const orderMap = new Map();
     orderedItemIds.forEach((itemId, idx) => {
-      const cleanId = String(itemId).trim();
-      for (let i = 1; i < data.length; i++) {
-        if (String(data[i][idCol]).trim() === cleanId) {
-          sheet.getRange(i + 1, sortCol + 1).setValue((idx + 1) * 10);
-          break;
-        }
-      }
+      orderMap.set(String(itemId).trim(), (idx + 1) * 10);
     });
+
+    let changed = false;
+    for (let i = 1; i < data.length; i++) {
+      const curId = String(data[i][idCol]).trim();
+      if (orderMap.has(curId)) {
+        data[i][sortCol] = orderMap.get(curId);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+      Utils.invalidateCache('Check_Items');
+    }
 
     return { success: true, message: '項目順序更新成功' };
   },

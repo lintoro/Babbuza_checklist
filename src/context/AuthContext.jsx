@@ -55,16 +55,22 @@ export function AuthProvider({ children }) {
   const login = async (userId, password) => {
     const res = await apiPost({ action: 'login', userId, password });
     if (res.success && res.data) {
-      const { token: newToken, user: newUser } = res.data;
+      const { token: newToken, user: newUser, departments: newDepts } = res.data;
       setToken(newToken);
       setUser(newUser);
+      if (Array.isArray(newDepts)) {
+        setDepartments(newDepts);
+      }
       localStorage.setItem(STORAGE_KEY_TOKEN, newToken);
       localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(newUser));
 
       if (newUser.mustChangePwd) {
         setMustChangePwdModal(true);
       }
-      await fetchUserDepts(newToken);
+      // 若後端未附帶 departments 才 fallback fetchUserDepts
+      if (!Array.isArray(newDepts) || newDepts.length === 0) {
+        await fetchUserDepts(newToken);
+      }
       return { success: true };
     }
     return { success: false, error: res.error || '登入失敗' };

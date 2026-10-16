@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { useAuth } from './context/AuthContext';
 import { apiGet, apiPost } from './api';
 import Navbar from './components/Navbar';
 import LoginModal from './components/LoginModal';
-import ChangePasswordModal from './components/ChangePasswordModal';
 import StationSelector from './components/StationSelector';
 import HandoverCard from './components/HandoverCard';
 import ChecklistSection from './components/ChecklistSection';
 import SubmitModal from './components/SubmitModal';
-import AdminUsersView from './components/AdminUsersView';
-import AdminStationsView from './components/AdminStationsView';
-import AdminReportsView from './components/AdminReportsView';
-import AdminWarRoomView from './components/AdminWarRoomView';
-import AdminChecklistItemsView from './components/AdminChecklistItemsView';
 import { Loader2, AlertCircle, RefreshCw, Users, Store, FileText, LayoutGrid, ListChecks } from 'lucide-react';
+
+// 動態延遲載入管理端重型組件 (Code Splitting)，現場手機端首屏體積大幅降低
+const AdminUsersView = lazy(() => import('./components/AdminUsersView'));
+const AdminStationsView = lazy(() => import('./components/AdminStationsView'));
+const AdminReportsView = lazy(() => import('./components/AdminReportsView'));
+const AdminWarRoomView = lazy(() => import('./components/AdminWarRoomView'));
+const AdminChecklistItemsView = lazy(() => import('./components/AdminChecklistItemsView'));
+const ChangePasswordModal = lazy(() => import('./components/ChangePasswordModal'));
 
 export default function App() {
   const { user, token, departments, loading: authLoading, mustChangePwdModal, setMustChangePwdModal } = useAuth();
@@ -59,10 +61,11 @@ export default function App() {
     }
   }, [departments, selectedDeptId]);
 
-  // 載入點檢項目與站點狀態
+  // 載入點檢項目、站點狀態與交接備忘 (合一請求，消除網路瀑布流)
   const loadChecklist = async (deptId, currentStage) => {
     if (!deptId) return;
     setLoadingItems(true);
+    setLoadingHandover(true);
     setErrorMsg('');
     try {
       const res = await apiGet({
@@ -70,11 +73,15 @@ export default function App() {
         token,
         deptId,
         stage: currentStage,
+        includeHandover: 'true',
       });
 
       if (res.success && res.data) {
         setItems(res.data.items || []);
         setDeptStatus(res.data.status || null);
+        if (res.data.handoverNotes) {
+          setHandoverNotes(res.data.handoverNotes);
+        }
 
         // 重設點檢項目勾選狀態
         const initialStates = {};
@@ -87,34 +94,14 @@ export default function App() {
       setErrorMsg(err.message || '載入點檢項目失敗');
     } finally {
       setLoadingItems(false);
-    }
-  };
-
-  // 載入交接備忘
-  const loadHandover = async (deptId) => {
-    if (!deptId) return;
-    setLoadingHandover(true);
-    try {
-      const res = await apiGet({
-        action: 'get_handover',
-        token,
-        deptId,
-      });
-      if (res.success && res.data) {
-        setHandoverNotes(res.data.notes || []);
-      }
-    } catch (err) {
-      console.warn('載入交接備忘失敗:', err.message);
-    } finally {
       setLoadingHandover(false);
     }
   };
 
-  // 當站點或時段變更時重新載入
+  // 當站點或時段變更時重新載入 (單次合一請求)
   useEffect(() => {
     if (token && selectedDeptId) {
       loadChecklist(selectedDeptId, stage);
-      loadHandover(selectedDeptId);
     }
   }, [token, selectedDeptId, stage]);
 
@@ -221,9 +208,12 @@ export default function App() {
         setSubmitResult(res.data);
         setShowSubmitModal(true);
         setHandoverText('');
-        // 重新整理站點狀態與交接備忘
+        // 若後端直接回傳最新站點狀態，立即更新 State
+        if (res.data.departmentStatus) {
+          setDeptStatus(res.data.departmentStatus);
+        }
+        // 重新整理站點狀態與交接備忘 (合一請求)
         loadChecklist(selectedDeptId, stage);
-        loadHandover(selectedDeptId);
       } else {
         alert(res.error || '點檢送出失敗');
       }
@@ -336,18 +326,27 @@ export default function App() {
               </button>
             </div>
 
-            {/* 根據頁籤渲染對應元件 */}
-            {adminTab === 'warroom' ? (
-              <AdminWarRoomView />
-            ) : adminTab === 'items' ? (
-              <AdminChecklistItemsView />
-            ) : adminTab === 'stations' ? (
-              <AdminStationsView />
-            ) : adminTab === 'users' ? (
-              <AdminUsersView />
-            ) : (
-              <AdminReportsView />
-            )}
+            {/* 根據頁籤渲染對應元件 (以 Suspense 包裹動態載入之組件) */}
+            <Suspense
+              fallback={
+                <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-xs flex flex-col items-center justify-center space-y-3 text-purple-600">
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                  <p className="text-xs font-semibold text-slate-500">載入管理後台模組中...</p>
+                </div>
+              }
+            >
+              {adminTab === 'warroom' ? (
+                <AdminWarRoomView />
+              ) : adminTab === 'items' ? (
+                <AdminChecklistItemsView />
+              ) : adminTab === 'stations' ? (
+                <AdminStationsView />
+              ) : adminTab === 'users' ? (
+                <AdminUsersView />
+              ) : (
+                <AdminReportsView />
+              )}
+            </Suspense>
           </div>
         ) : (
           <>
@@ -380,11 +379,10 @@ export default function App() {
             />
 
             {/* 2. 站點交接與未結案異常備忘 */}
-            {/* 2. 站點交接與未結案異常備忘 */}
             <HandoverCard
               notes={handoverNotes}
               loading={loadingHandover}
-              onReload={() => loadHandover(selectedDeptId)}
+              onReload={() => loadChecklist(selectedDeptId, stage)}
             />
 
             {/* 3. 點檢項目清單 (Accordion / OK / NG / NA) */}
@@ -431,19 +429,23 @@ export default function App() {
         resultData={submitResult}
       />
 
-      {/* 強制首次修改密碼彈窗 */}
-      <ChangePasswordModal
-        isOpen={mustChangePwdModal}
-        onClose={() => setMustChangePwdModal(false)}
-        isForced={true}
-      />
-
-      {/* 手動變更密碼彈窗 */}
-      <ChangePasswordModal
-        isOpen={manualChangePwdOpen}
-        onClose={() => setManualChangePwdOpen(false)}
-        isForced={false}
-      />
+      {/* 強制首次修改密碼與手動變更密碼彈窗 (Suspense 異步載入) */}
+      <Suspense fallback={null}>
+        {mustChangePwdModal && (
+          <ChangePasswordModal
+            isOpen={mustChangePwdModal}
+            onClose={() => setMustChangePwdModal(false)}
+            isForced={true}
+          />
+        )}
+        {manualChangePwdOpen && (
+          <ChangePasswordModal
+            isOpen={manualChangePwdOpen}
+            onClose={() => setManualChangePwdOpen(false)}
+            isForced={false}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

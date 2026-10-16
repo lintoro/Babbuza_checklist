@@ -125,7 +125,7 @@ const Audit = {
       stage,
       version,
       !isTest, // 測試紀錄的 Is_Current 一律為 false，永不覆蓋正式狀態
-      payload.correctionReason || (isTest ? '[沙盒測試自動標記]' : ''),
+      Utils.sanitizeSheetInput(payload.correctionReason || (isTest ? '[沙盒測試自動標記]' : '')),
       currentUser.userId,
       currentUser.name,
       submitTime,
@@ -140,8 +140,7 @@ const Audit = {
     logsSheet.appendRow(logRow);
     const lastRow = logsSheet.getLastRow();
     // 強制設定 Submit_Time (第10欄) 與 Deadline (第11欄) 為純文字格式，避免 Google Sheets 試算表底層日期序號二次轉譯
-    logsSheet.getRange(lastRow, 10).setNumberFormat('@').setValue(submitTime);
-    logsSheet.getRange(lastRow, 11).setNumberFormat('@').setValue(deadlineStr);
+    logsSheet.getRange(lastRow, 10, 1, 2).setNumberFormat('@').setValues([[submitTime, deadlineStr]]);
 
     // 7. 批次寫入 Audit_Details 快照
     // 欄位: Log_ID, Item_ID, Category_Snapshot, Title_Snapshot, Status, Value, Remark
@@ -153,7 +152,7 @@ const Audit = {
       it.title || '',
       (it.status || 'OK').toUpperCase(),
       it.value || '',
-      it.remark || ''
+      it.remark ? Utils.sanitizeSheetInput(String(it.remark)) : ''
     ]);
     if (detailRows.length > 0) {
       const startRow = detailsSheet.getLastRow() + 1;
@@ -169,7 +168,7 @@ const Audit = {
 
       defectItems.forEach((defect, idx) => {
         const noteId = `${noteIdPrefix}-NG${idx + 1}-${uniqueSuffix}`;
-        const content = `【點檢異常】${defect.category ? '[' + defect.category + '] ' : ''}${defect.title}：${defect.remark || '未填寫異常說明'}`;
+        const rawContent = `【點檢異常】${defect.category ? '[' + defect.category + '] ' : ''}${defect.title}：${defect.remark || '未填寫異常說明'}`;
         handoverRows.push([
           noteId,
           bizDate,
@@ -177,7 +176,7 @@ const Audit = {
           'DEFECT',
           logId,
           defect.itemId || '',
-          content,
+          Utils.sanitizeSheetInput(rawContent),
           currentUser.userId,
           '', // Assignee_ID
           'OPEN', // Status
@@ -198,7 +197,7 @@ const Audit = {
           'HANDOVER',
           logId,
           '',
-          String(payload.handoverNote).trim(),
+          Utils.sanitizeSheetInput(String(payload.handoverNote).trim()),
           currentUser.userId,
           '',
           'OPEN',
@@ -214,6 +213,11 @@ const Audit = {
         handoverSheet.getRange(hStartRow, 1, handoverRows.length, handoverRows[0].length).setValues(handoverRows);
       }
     }
+
+    // 清除涉及修改的工作表快取
+    Utils.invalidateCache('Audit_Logs');
+    Utils.invalidateCache('Audit_Details');
+    Utils.invalidateCache('Handover_Notes');
 
     // 9. 格式化 LINE 通報複製文字
     const stageZh = stage === 'OPEN' ? '營業前' : '營業後';
@@ -237,6 +241,16 @@ const Audit = {
       notifyReport += `\n📝 交接事項：\n${String(payload.handoverNote).trim()}\n`;
     }
 
+    // 取得最新站點狀態，供前端即時更新，免去二次請求
+    let latestStatus = null;
+    try {
+      if (typeof Checklist !== 'undefined' && Checklist.getDepartmentStatus) {
+        latestStatus = Checklist.getDepartmentStatus(deptId, bizDate);
+      }
+    } catch (e) {
+      console.warn('Get latest dept status failed:', e);
+    }
+
     return {
       success: true,
       logId: logId,
@@ -250,7 +264,8 @@ const Audit = {
         na: naCount
       },
       defectCount: defectItems.length,
-      notifyReport: notifyReport
+      notifyReport: notifyReport,
+      departmentStatus: latestStatus
     };
   }
 };

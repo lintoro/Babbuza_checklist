@@ -152,6 +152,18 @@ assert_test('資安防線 5：無效憑證與帳密安全防護',
             not res_wrong_cred.get('success'), 
             f"防護回應: {res_wrong_cred.get('error')}")
 
+# 13. 資安防線 6：未授權讀取行事曆攔截 (修復公開暴露漏洞)
+res_calendar_unauth = get('action=get_all_calendar')
+assert_test('資安防線 6：未授權存取行事曆阻斷 (Calendar Auth Guard)', 
+            not res_calendar_unauth.get('success'), 
+            f"阻斷回應: {res_calendar_unauth.get('error')}")
+
+# 14. 資安防線 7：批次戰情矩陣端點 RBAC 權限控管
+res_batch_unauth = get('action=get_batch_inspection_matrix&deptIds=1F,2F')
+assert_test('資安防線 7：未授權批次矩陣存取阻斷 (Batch Matrix RBAC Guard)', 
+            not res_batch_unauth.get('success'), 
+            f"阻斷回應: {res_batch_unauth.get('error')}")
+
 print('\n======================================================================')
 print(f'驗收結果: 通過 {success_count} / {total_tests} 項生產級檢驗')
 if success_count == total_tests:

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
 import { useAuth } from '../context/AuthContext';
 import { apiGet, apiPost, getTaipeiDateString } from '../api';
 import {
@@ -130,8 +129,8 @@ function formatDateHeader(dateStr, customHolidays = {}) {
 /**
  * 將巡檢戰情矩陣資料轉換為 XLSX 工作表物件
  */
-function createMatrixWorksheet(matrixData) {
-  if (!matrixData || !matrixData.items) return null;
+function createMatrixWorksheet(matrixData, XLSX) {
+  if (!matrixData || !matrixData.items || !XLSX) return null;
   const dates = matrixData.dates || [];
 
   // 建立表頭列
@@ -172,7 +171,7 @@ function createMatrixWorksheet(matrixData) {
 }
 
 export default function AdminWarRoomView() {
-  const { token, user: currentUser } = useAuth();
+  const { token, user: currentUser, departments: authDepartments } = useAuth();
   const [activeTab, setActiveTab] = useState('matrix'); // 'matrix' | 'issues' | 'resolved'
 
   // 1. 戰情矩陣狀態
@@ -183,13 +182,13 @@ export default function AdminWarRoomView() {
   });
   const [matrixData, setMatrixData] = useState(null);
   const [loadingMatrix, setLoadingMatrix] = useState(false);
-  const [departments, setDepartments] = useState([]);
+  const [departments, setDepartments] = useState(() => authDepartments || []);
   const tableContainerRef = useRef(null);
 
   // 匯出相關狀態 (單一單位雙分頁與多單位批次單一總表)
   const [isExportingSingle, setIsExportingSingle] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
-  const [selectedDeptIds, setSelectedDeptIds] = useState([]);
+  const [selectedDeptIds, setSelectedDeptIds] = useState(() => (authDepartments || []).map((d) => d.deptId));
   const [isExportingBatch, setIsExportingBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentName: '' });
 
@@ -206,8 +205,13 @@ export default function AdminWarRoomView() {
   const [loadingResolved, setLoadingResolved] = useState(false);
   const [resolvedSubTab, setResolvedSubTab] = useState('DEFECT'); // 'DEFECT' (設備報修) 或 'HANDOVER' (交接備忘)
 
-  // 載入站點清單
+  // 載入站點清單 (若 AuthContext 已有則直接複用，否則才透過 API 載入)
   const loadDepts = async () => {
+    if (authDepartments && authDepartments.length > 0) {
+      setDepartments(authDepartments);
+      setSelectedDeptIds(authDepartments.map((d) => d.deptId));
+      return;
+    }
     try {
       const res = await apiGet({ action: 'get_user_depts', token });
       if (res.success && res.data) {
@@ -342,6 +346,7 @@ export default function AdminWarRoomView() {
     if (!deptId) return;
     setIsExportingSingle(true);
     try {
+      const XLSX = await import('xlsx');
       const curDeptObj = departments.find((d) => d.deptId === deptId);
       const deptName = curDeptObj?.deptName || deptId;
 
@@ -354,12 +359,12 @@ export default function AdminWarRoomView() {
       const wb = XLSX.utils.book_new();
 
       if (resOpen?.success && resOpen?.data) {
-        const wsOpen = createMatrixWorksheet(resOpen.data);
+        const wsOpen = createMatrixWorksheet(resOpen.data, XLSX);
         if (wsOpen) XLSX.utils.book_append_sheet(wb, wsOpen, '營業前 (開店)');
       }
 
       if (resClose?.success && resClose?.data) {
-        const wsClose = createMatrixWorksheet(resClose.data);
+        const wsClose = createMatrixWorksheet(resClose.data, XLSX);
         if (wsClose) XLSX.utils.book_append_sheet(wb, wsClose, '營業後 (閉店)');
       }
 
@@ -389,7 +394,7 @@ export default function AdminWarRoomView() {
     }
   };
 
-  // 2. 批次匯出選取單位之綜合 Excel 總表 (單一檔案包含所有選取單位的開店/閉店分頁)
+  // 2. 批次匯出選取單位之綜合 Excel 總表 (單次呼叫後端批次矩陣端點，純記憶體組裝，秒級匯出)
   const handleExportBatchDepts = async () => {
     const targetDeptIds = departments
       .map((d) => d.deptId)
@@ -401,11 +406,22 @@ export default function AdminWarRoomView() {
     }
 
     setIsExportingBatch(true);
-    setBatchProgress({ current: 0, total: targetDeptIds.length, currentName: '' });
+    setBatchProgress({ current: 0, total: targetDeptIds.length, currentName: '向雲端請求批次數據中...' });
 
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       const todayStr = getTaipeiDateString();
+
+      // 單次批次向後端獲取所有站點的矩陣資料 (消除 16 次重複請求)
+      const resBatch = await apiGet({
+        action: 'get_batch_inspection_matrix',
+        token,
+        deptIds: targetDeptIds.join(','),
+        stages: 'OPEN,CLOSE'
+      });
+
+      const matrices = resBatch?.data?.matrices || {};
 
       for (let i = 0; i < targetDeptIds.length; i++) {
         const dId = targetDeptIds[i];
@@ -418,24 +434,19 @@ export default function AdminWarRoomView() {
           currentName: deptName
         });
 
-        // 讀取該單位之 OPEN 與 CLOSE 矩陣
-        const [resOpen, resClose] = await Promise.all([
-          apiGet({ action: 'get_inspection_matrix', token, deptId: dId, stage: 'OPEN' }),
-          apiGet({ action: 'get_inspection_matrix', token, deptId: dId, stage: 'CLOSE' })
-        ]);
-
-        // Excel 分頁標籤限制 31 字元以內，且不可有特殊字元
         const cleanDeptPrefix = deptName.replace(/[:\\/?*\[\]]/g, '').slice(0, 22);
 
-        if (resOpen?.success && resOpen?.data) {
-          const wsOpen = createMatrixWorksheet(resOpen.data);
+        const matrixOpen = matrices[`${dId}_OPEN`];
+        if (matrixOpen) {
+          const wsOpen = createMatrixWorksheet(matrixOpen, XLSX);
           if (wsOpen) {
             XLSX.utils.book_append_sheet(wb, wsOpen, `${cleanDeptPrefix}-開店`);
           }
         }
 
-        if (resClose?.success && resClose?.data) {
-          const wsClose = createMatrixWorksheet(resClose.data);
+        const matrixClose = matrices[`${dId}_CLOSE`];
+        if (matrixClose) {
+          const wsClose = createMatrixWorksheet(matrixClose, XLSX);
           if (wsClose) {
             XLSX.utils.book_append_sheet(wb, wsClose, `${cleanDeptPrefix}-閉店`);
           }

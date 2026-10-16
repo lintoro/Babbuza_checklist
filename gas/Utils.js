@@ -3,10 +3,30 @@
  */
 
 const Utils = {
+  // 單次請求執行期記憶體快取 (Request-Scope In-Memory Cache)
+  _ssCache: null,
+  _sheetsCache: {},
+  _sheetObjectsCache: {},
+
   /**
-   * 取得主試算表物件
+   * 清除指定或全部工作表快取
+   */
+  invalidateCache: function(sheetName) {
+    if (sheetName) {
+      delete this._sheetObjectsCache[sheetName];
+      delete this._sheetsCache[sheetName];
+    } else {
+      this._sheetObjectsCache = {};
+      this._sheetsCache = {};
+      this._ssCache = null;
+    }
+  },
+
+  /**
+   * 取得主試算表物件 (快取單次執行實例)
    */
   getSpreadsheet: function() {
+    if (this._ssCache) return this._ssCache;
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     try {
       if (ss && ss.getSpreadsheetTimeZone() !== 'Asia/Taipei') {
@@ -15,28 +35,41 @@ const Utils = {
     } catch (e) {
       console.warn('Set spreadsheet timezone failed:', e);
     }
+    this._ssCache = ss;
     return ss;
   },
 
   /**
-   * 取得指定工作表
+   * 取得指定工作表 (快取單次執行實例)
    */
   getSheet: function(sheetName) {
+    if (this._sheetsCache[sheetName]) {
+      return this._sheetsCache[sheetName];
+    }
     const ss = this.getSpreadsheet();
     const sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
       throw new Error('找不到工作表: ' + sheetName);
     }
+    this._sheetsCache[sheetName] = sheet;
     return sheet;
   },
 
   /**
-   * 讀取工作表並轉換為物件陣列 (第一列為欄位鍵名)
+   * 讀取工作表並轉換為物件陣列 (單次請求記憶體快取)
    */
-  sheetToObjects: function(sheetName) {
+  sheetToObjects: function(sheetName, forceRefresh = false) {
+    if (!forceRefresh && this._sheetObjectsCache[sheetName]) {
+      // 回傳快取副本（淺拷貝陣列），避免外部意外改動原快取
+      return this._sheetObjectsCache[sheetName].slice();
+    }
+
     const sheet = this.getSheet(sheetName);
     const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return [];
+    if (data.length <= 1) {
+      this._sheetObjectsCache[sheetName] = [];
+      return [];
+    }
 
     const headers = data[0].map(h => String(h).trim());
     const result = [];
@@ -55,7 +88,27 @@ const Utils = {
       }
       result.push(obj);
     }
-    return result;
+
+    this._sheetObjectsCache[sheetName] = result;
+    return result.slice();
+  },
+
+  /**
+   * 試算表輸入消毒 (防範 CSV / Formula Injection 公式注入)
+   * 若文字以 =, +, -, @ 開頭且非純數字，則前置單引號 ' 避免被試算表解析為公式
+   */
+  sanitizeSheetInput: function(val) {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    if (!trimmed) return val;
+    const firstChar = trimmed.charAt(0);
+    if (['=', '+', '-', '@'].includes(firstChar)) {
+      // 若為純負數例如 -123 或 +886 則保留原值，否則加上跳脫單引號
+      if (!/^[-+]?\d+(\.\d+)?$/.test(trimmed)) {
+        return "'" + val;
+      }
+    }
+    return val;
   },
 
   /**
@@ -98,6 +151,35 @@ const Utils = {
   },
 
   /**
+   * 常數時間字串比對 (防止時序旁路攻擊 Timing Attack)
+   */
+  constantTimeCompare: function(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    let mismatch = a.length === b.length ? 0 : 1;
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      const charA = i < a.length ? a.charCodeAt(i) : 0;
+      const charB = i < b.length ? b.charCodeAt(i) : 0;
+      mismatch |= charA ^ charB;
+    }
+    return mismatch === 0;
+  },
+
+  /**
+   * 角色權限守衛 (RBAC Guard)
+   */
+  requireRole: function(user, allowedRoles = ['ADMIN']) {
+    if (!user || !user.role) {
+      throw new Error('未授權存取：無效的使用者權限');
+    }
+    const currentRole = String(user.role).trim().toUpperCase();
+    const normalizedAllowed = allowedRoles.map(r => String(r).trim().toUpperCase());
+    if (!normalizedAllowed.includes(currentRole)) {
+      throw new Error(`權限不足：需要 [${normalizedAllowed.join('/')}] 角色權限`);
+    }
+  },
+
+  /**
    * SHA-256 雜湊計算 (支援加鹽)
    */
   sha256: function(str, salt = '') {
@@ -132,7 +214,7 @@ const Utils = {
   generateToken: function(userId, role, tokenVersion) {
     const secretKey = this.getSecretKey();
     const timestamp = Date.now();
-    const payload = `${userId}:${role}:${timestamp}:${tokenVersion}`;
+    const payload = `${encodeURIComponent(userId)}:${role}:${timestamp}:${tokenVersion}`;
     const signature = this.sha256(payload, secretKey);
     const fullStr = `${payload}:${signature}`;
     return Utilities.base64Encode(fullStr);
@@ -148,13 +230,15 @@ const Utils = {
       const parts = decoded.split(':');
       if (parts.length < 5) return { valid: false, error: 'Token 格式不合規' };
 
-      const [userId, role, timestampStr, tokenVersionStr, signature] = parts;
+      const [encodedUserId, role, timestampStr, tokenVersionStr, signature] = parts;
+      const userId = decodeURIComponent(encodedUserId);
       const settings = this.getSettings();
       const secretKey = this.getSecretKey();
-      const payload = `${userId}:${role}:${timestampStr}:${tokenVersionStr}`;
+      const payload = `${encodedUserId}:${role}:${timestampStr}:${tokenVersionStr}`;
       const expectedSign = this.sha256(payload, secretKey);
 
-      if (signature !== expectedSign) {
+      // 常數時間比對簽章防範時序攻擊
+      if (!this.constantTimeCompare(signature, expectedSign)) {
         return { valid: false, error: 'Token 簽章無效' };
       }
 
@@ -166,7 +250,7 @@ const Utils = {
         return { valid: false, error: 'Token 已逾期，請重新登入' };
       }
 
-      // 檢查 Users 表驗證版本與帳號狀態
+      // 檢查 Users 表驗證版本與帳號狀態 (享受單次請求快取)
       const users = this.sheetToObjects('Users');
       const user = users.find(u => String(u.User_ID).trim().toUpperCase() === String(userId).trim().toUpperCase());
       if (!user) {
@@ -250,6 +334,7 @@ const Utils = {
 
   /**
    * 批次正規化 Departments 表格的時間為純字串，避免 Google Sheets Date 格式時區偏移
+   * 記憶體批次更新，單次 setValues 寫入
    */
   normalizeDepartmentTimes: function() {
     try {
@@ -259,8 +344,9 @@ const Utils = {
       }
       const sheet = this.getSheet('Departments');
       const data = sheet.getDataRange().getValues();
-      const headers = data[0].map(h => String(h).trim());
+      if (data.length <= 1) return;
 
+      const headers = data[0].map(h => String(h).trim());
       const openStartCol = headers.indexOf('Open_Start_Time');
       const openDeadCol = headers.indexOf('Open_Deadline');
       const closeStartCol = headers.indexOf('Close_Start_Time');
@@ -268,6 +354,7 @@ const Utils = {
 
       if (openStartCol === -1 || closeStartCol === -1) return;
 
+      let changed = false;
       for (let i = 1; i < data.length; i++) {
         let curOpenStart = this.formatTime(data[i][openStartCol]);
         if (!curOpenStart || curOpenStart < '06:00' || curOpenStart > '14:00') curOpenStart = '09:30';
@@ -281,10 +368,21 @@ const Utils = {
         let curCloseDead = this.formatTime(data[i][closeDeadCol]);
         if (!curCloseDead || curCloseDead < '15:00' || curCloseDead > '23:59') curCloseDead = '20:00';
 
-        sheet.getRange(i + 1, openStartCol + 1).setNumberFormat('@').setValue(curOpenStart);
-        sheet.getRange(i + 1, openDeadCol + 1).setNumberFormat('@').setValue(curOpenDead);
-        sheet.getRange(i + 1, closeStartCol + 1).setNumberFormat('@').setValue(curCloseStart);
-        sheet.getRange(i + 1, closeDeadCol + 1).setNumberFormat('@').setValue(curCloseDead);
+        if (data[i][openStartCol] !== curOpenStart ||
+            data[i][openDeadCol] !== curOpenDead ||
+            data[i][closeStartCol] !== curCloseStart ||
+            data[i][closeDeadCol] !== curCloseDead) {
+          data[i][openStartCol] = curOpenStart;
+          data[i][openDeadCol] = curOpenDead;
+          data[i][closeStartCol] = curCloseStart;
+          data[i][closeDeadCol] = curCloseDead;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+        this.invalidateCache('Departments');
       }
     } catch (e) {
       console.warn('normalizeDepartmentTimes error:', e);
@@ -305,6 +403,7 @@ const Utils = {
       const deadCol = headers.indexOf('Deadline');
       const stageCol = headers.indexOf('Stage');
 
+      let changed = false;
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const stg = stageCol !== -1 ? String(row[stageCol]).toUpperCase() : '';
@@ -314,21 +413,19 @@ const Utils = {
           const val = row[submitCol];
           if (val instanceof Date) {
             let formatted = Utilities.formatDate(val, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
-            // 若因為之前試算表被預設美西時區 (UTC-7) 導致今天 17:xx 變成了 08:xx，在此進行校正
             const timePart = formatted.split(' ')[1] || '';
             if (stg === 'CLOSE' && timePart >= '07:00:00' && timePart <= '11:00:00') {
-              // 補回 9 小時差距
               const fixedDate = new Date(val.getTime() + 9 * 60 * 60 * 1000);
               formatted = Utilities.formatDate(fixedDate, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
             }
-            sheet.getRange(i + 1, submitCol + 1).setNumberFormat('@').setValue(formatted);
+            row[submitCol] = formatted;
+            changed = true;
           } else if (typeof val === 'string' && val.includes('T')) {
-            // ISO 字串格式處理
             try {
               const d = new Date(val);
               if (!isNaN(d.getTime())) {
-                let formatted = Utilities.formatDate(d, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
-                sheet.getRange(i + 1, submitCol + 1).setNumberFormat('@').setValue(formatted);
+                row[submitCol] = Utilities.formatDate(d, 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+                changed = true;
               }
             } catch (e) {}
           }
@@ -340,12 +437,23 @@ const Utils = {
           let dStr = this.formatTime(dVal);
           if (stg === 'OPEN' && (!dStr || dStr < '07:00' || dStr > '16:00')) {
             dStr = '10:30';
-            sheet.getRange(i + 1, deadCol + 1).setNumberFormat('@').setValue(dStr);
+            if (row[deadCol] !== dStr) {
+              row[deadCol] = dStr;
+              changed = true;
+            }
           } else if (stg === 'CLOSE' && (!dStr || dStr < '15:00' || dStr > '23:59')) {
             dStr = '20:00';
-            sheet.getRange(i + 1, deadCol + 1).setNumberFormat('@').setValue(dStr);
+            if (row[deadCol] !== dStr) {
+              row[deadCol] = dStr;
+              changed = true;
+            }
           }
         }
+      }
+
+      if (changed) {
+        sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+        this.invalidateCache('Audit_Logs');
       }
     } catch (e) {
       console.warn('normalizeAuditLogsTimes error:', e);
@@ -354,13 +462,15 @@ const Utils = {
 
   /**
    * 判斷指定日期是否為休館日或國定假日
+   * 支援可選的 preloadedCalendar 物件快取以達到 O(1) 查找
    */
-  checkDayType: function(dateStr) {
-    const calendar = this.sheetToObjects('Calendar');
+  checkDayType: function(dateStr, preloadedCalendar = null) {
+    const calendar = preloadedCalendar || this.sheetToObjects('Calendar');
+    const target = String(dateStr).trim();
     const matched = calendar.find(c => {
       let d = c.Date;
       if (d instanceof Date) d = this.formatDate(d);
-      return String(d).trim() === String(dateStr).trim();
+      return String(d).trim() === target;
     });
 
     if (matched) {
@@ -368,7 +478,7 @@ const Utils = {
     }
 
     // 檢查是否為週末
-    const d = new Date(dateStr + 'T00:00:00+08:00');
+    const d = new Date(target + 'T00:00:00+08:00');
     const day = d.getDay();
     if (day === 0 || day === 6) {
       return 'WEEKEND';

@@ -111,6 +111,10 @@ function doGet(e) {
 
         const items = Checklist.getChecklistItems(deptId, stage, date);
         const status = Checklist.getDepartmentStatus(deptId, date);
+        let handoverNotes = [];
+        if (params.includeHandover === 'true') {
+          handoverNotes = Handover.getNotes(deptId, true);
+        }
 
         return Utils.jsonResponse({
           deptId: deptId,
@@ -118,7 +122,8 @@ function doGet(e) {
           date: date,
           count: items.length,
           status: status,
-          items: items
+          items: items,
+          handoverNotes: handoverNotes
         });
       }
 
@@ -163,6 +168,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
 
         const res = Handover.getAllOpenIssues();
         return Utils.jsonResponse(res.success ? res.data : null, res.success, res.error);
@@ -174,6 +180,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
 
         const limit = params.limit || 50;
         const res = Handover.getResolvedHistory(limit);
@@ -186,6 +193,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
 
         const deptId = params.deptId || '1F';
         const stage = params.stage || 'OPEN';
@@ -195,12 +203,32 @@ function doGet(e) {
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
 
+      case 'get_batch_inspection_matrix': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
+
+        const deptIdsStr = params.deptIds || '';
+        const deptIds = deptIdsStr ? deptIdsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const stagesStr = params.stages || 'OPEN,CLOSE';
+        const stages = stagesStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+        const startDate = params.startDate || '';
+        const endDate = params.endDate || '';
+
+        const res = Checklist.getBatchInspectionMatrix(deptIds, stages, startDate, endDate);
+        return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
+      }
+
       case 'admin_get_departments': {
         const token = params.token;
         const auth = Utils.validateToken(token);
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
         const res = Checklist.getAllDepartments(auth.user);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
@@ -211,6 +239,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
         const deptId = params.deptId || '1F';
         const stage = params.stage || 'OPEN';
         const res = Checklist.adminGetChecklistItems(deptId, stage, auth.user);
@@ -223,6 +252,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN']);
         const res = Auth.adminGetUsers(auth.user);
         return Utils.jsonResponse(res.success ? res : null, res.success, res.error);
       }
@@ -233,6 +263,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
 
         const months = parseInt(params.months, 10) || 3;
         const res = Holiday.checkUpcomingHolidays(params.date, months);
@@ -240,6 +271,13 @@ function doGet(e) {
       }
 
       case 'get_all_calendar': {
+        const token = params.token;
+        const auth = Utils.validateToken(token);
+        if (!auth.valid) {
+          return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
+        }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
+
         const rows = Utils.sheetToObjects('Calendar');
         return Utils.jsonResponse({
           count: rows.length,
@@ -253,6 +291,7 @@ function doGet(e) {
         if (!auth.valid) {
           return Utils.jsonResponse(null, false, '身分驗證失敗: ' + auth.error);
         }
+        Utils.requireRole(auth.user, ['ADMIN', 'SUPERVISOR']);
 
         const stage = params.stage || 'OPEN';
         const date = params.date || Utils.formatDate();
@@ -261,13 +300,11 @@ function doGet(e) {
       }
 
       default:
-
-
-
         return Utils.jsonResponse(null, false, '不支援的 GET Action: ' + action);
     }
   } catch (err) {
-    return Utils.jsonResponse(null, false, err.toString());
+    console.error('doGet error:', err);
+    return Utils.jsonResponse(null, false, err.message || '伺服器內部錯誤');
   }
 }
 
@@ -475,6 +512,7 @@ function doPost(e) {
         return Utils.jsonResponse(null, false, '不支援的 POST Action: ' + action);
     }
   } catch (err) {
-    return Utils.jsonResponse(null, false, err.toString());
+    console.error('doPost error:', err);
+    return Utils.jsonResponse(null, false, err.message || '伺服器內部錯誤');
   }
 }
