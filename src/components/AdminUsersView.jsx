@@ -26,8 +26,50 @@ export default function AdminUsersView() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ACTIVE'); // 預設在職：ACTIVE, DISABLED
-  const [roleFilter, setRoleFilter] = useState('ALL');     // ALL, STAFF, SUPERVISOR, ADMIN
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 預設顯示全部：ALL, ACTIVE, INACTIVE
+  const [roleFilter, setRoleFilter] = useState('ALL');     // ALL, ADMIN, SUPERVISOR, STAFF
+
+  // 角色權重順序：ADMIN (1) -> SUPERVISOR (2) -> STAFF (3)
+  const ROLE_RANK = {
+    ADMIN: 1,
+    SUPERVISOR: 2,
+    STAFF: 3,
+  };
+
+  // 人員名冊排序邏輯：
+  // 1. 一階：角色順序 (ADMIN -> SUPERVISOR -> STAFF)
+  // 2. 二階：工號由 B 到 A，號碼由小到大 (例如 B111001 < B111002 < A111001)
+  const compareUsers = (a, b) => {
+    const roleA = ROLE_RANK[String(a.role || '').toUpperCase()] || 99;
+    const roleB = ROLE_RANK[String(b.role || '').toUpperCase()] || 99;
+    if (roleA !== roleB) return roleA - roleB;
+
+    const idA = String(a.userId || '').trim().toUpperCase();
+    const idB = String(b.userId || '').trim().toUpperCase();
+
+    const matchA = idA.match(/^([A-Z]+)(\d+)?(.*)$/);
+    const matchB = idB.match(/^([A-Z]+)(\d+)?(.*)$/);
+
+    const prefixA = matchA ? matchA[1] : '';
+    const prefixB = matchB ? matchB[1] : '';
+
+    const getPrefixPriority = (p) => {
+      if (p === 'B') return 1;
+      if (p === 'A') return 2;
+      return 3;
+    };
+
+    const pRankA = getPrefixPriority(prefixA);
+    const pRankB = getPrefixPriority(prefixB);
+    if (pRankA !== pRankB) return pRankA - pRankB;
+    if (prefixA !== prefixB) return prefixA.localeCompare(prefixB);
+
+    const numA = matchA && matchA[2] ? parseInt(matchA[2], 10) : null;
+    const numB = matchB && matchB[2] ? parseInt(matchB[2], 10) : null;
+    if (numA !== null && numB !== null && numA !== numB) return numA - numB;
+
+    return idA.localeCompare(idB, undefined, { numeric: true });
+  };
 
   // 站點中文名稱對照 (依規範 BENPU 顯示為「本鋪」)
   const getDeptDisplayName = (deptId) => {
@@ -230,29 +272,31 @@ export default function AdminUsersView() {
     }
   };
 
-  // 篩選人員清單
-  const filteredUsers = users.filter((u) => {
-    // 搜尋字串
-    const query = searchQuery.trim().toLowerCase();
-    const matchQuery =
-      !query ||
-      u.userId.toLowerCase().includes(query) ||
-      u.name.toLowerCase().includes(query);
+  // 篩選人員清單 (含一階角色 + 二階工號由 B 到 A 升冪排序)
+  const filteredUsers = users
+    .filter((u) => {
+      // 搜尋字串
+      const query = searchQuery.trim().toLowerCase();
+      const matchQuery =
+        !query ||
+        u.userId.toLowerCase().includes(query) ||
+        u.name.toLowerCase().includes(query);
 
-    // 狀態篩選：ACTIVE 為在職，INACTIVE 為離職留停 (LEAVE 或 DISABLED)
-    const matchStatus =
-      statusFilter === 'ALL'
-        ? true
-        : statusFilter === 'ACTIVE'
-        ? u.status === 'ACTIVE'
-        : u.status !== 'ACTIVE';
+      // 狀態篩選：ACTIVE 為在職，INACTIVE 為離職留停 (LEAVE 或 DISABLED)
+      const matchStatus =
+        statusFilter === 'ALL'
+          ? true
+          : statusFilter === 'ACTIVE'
+          ? u.status === 'ACTIVE'
+          : u.status !== 'ACTIVE';
 
-    // 角色篩選
-    const matchRole =
-      roleFilter === 'ALL' || u.role === roleFilter;
+      // 角色篩選
+      const matchRole =
+        roleFilter === 'ALL' || u.role === roleFilter;
 
-    return matchQuery && matchStatus && matchRole;
-  });
+      return matchQuery && matchStatus && matchRole;
+    })
+    .sort(compareUsers);
 
   const activeCount = users.filter((u) => u.status === 'ACTIVE').length;
   const leaveCount = users.filter((u) => u.status === 'LEAVE').length;
@@ -311,8 +355,16 @@ export default function AdminUsersView() {
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           </div>
 
-          {/* 狀態切換 (在職 與 離職留停) */}
+          {/* 狀態切換 (全部、在職 與 離職留停) */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs">
+            <button
+              onClick={() => setStatusFilter('ALL')}
+              className={`flex-1 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                statusFilter === 'ALL' ? 'bg-white text-brand-700 shadow-xs font-bold' : 'text-slate-500'
+              }`}
+            >
+              全部 ({users.length})
+            </button>
             <button
               onClick={() => setStatusFilter('ACTIVE')}
               className={`flex-1 py-1 rounded-lg font-medium transition-all cursor-pointer ${
@@ -332,16 +384,16 @@ export default function AdminUsersView() {
           </div>
 
 
-          {/* 角色篩選 */}
+          {/* 角色篩選 (次序：ADMIN -> SUPERVISOR -> STAFF) */}
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
             className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 cursor-pointer"
           >
             <option value="ALL">全部角色</option>
-            <option value="STAFF">現場同仁 (STAFF)</option>
-            <option value="SUPERVISOR">巡店主管 (SUPERVISOR)</option>
             <option value="ADMIN">系統管理員 (ADMIN)</option>
+            <option value="SUPERVISOR">巡店主管 (SUPERVISOR)</option>
+            <option value="STAFF">現場同仁 (STAFF)</option>
           </select>
         </div>
       </div>
@@ -571,9 +623,9 @@ export default function AdminUsersView() {
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-brand-500 cursor-pointer"
                   >
-                    <option value="STAFF">現場同仁 (STAFF)</option>
-                    <option value="SUPERVISOR">巡店主管 (SUPERVISOR)</option>
                     <option value="ADMIN">系統管理員 (ADMIN)</option>
+                    <option value="SUPERVISOR">巡店主管 (SUPERVISOR)</option>
+                    <option value="STAFF">現場同仁 (STAFF)</option>
                   </select>
                 </div>
 
