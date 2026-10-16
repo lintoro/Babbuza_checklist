@@ -33,16 +33,18 @@
 * **後端架構**：Google Apps Script (GAS) Web App + Google Sheets 關聯式資料庫
   * **Google Apps Script 專案**：可透過 `.clasp.json` 連接（設定範本見下文）
   * **主試算表架構**：包含 Stations, Users, Items, Logs, Issues, Calendar 等標準標準化資料表
-  * **最新生產環境部署**：**`@36`**（全後端快取、批次 I/O、消除 N+1 讀表、RBAC 權限控管與防公式注入；前端 Code Splitting 與單一請求匯出）
+  * **最新生產環境部署**：**`@37`**（全後端快取、批次 I/O、消除 N+1 讀表、RBAC 三階管理權限控管與防公式注入；前端 Code Splitting 與單一請求匯出）
 * **前端託管平台**：**Render** (Static Site)
   * **設定檔**：根目錄已配置 `render.yaml` 與 `.env.example`
   * **環境變數注入**：由 Render 後台 Dashboard 安全注入 `VITE_WEB_APP_URL`
   * **建置指令**：`npm install && npm run build`
   * **發布目錄**：`dist`
   * **SPA 重定向**：`/*` ➜ `/index.html` (Rewrite)
-* **系統預設帳號規範**：
-  * **初始角色**：ADMIN（管理員）與 STAFF（現場同仁）
-  * **初始安全防護**：首次登入或密碼被重設後，系統強制要求修改為 6～8 碼之自訂新密碼，登入支援記住工號。
+* **系統三階角色與權限規範**：
+  * **STAFF (現場同仁)**：現場開閉店打勾點檢、提報異常與現場交接，無後台管理權限。
+  * **SUPERVISOR (巡店主管)**：開放後台戰情中心（打勾矩陣/Excel 匯出）、未結案異常督辦、定時 LINE 總結報表產出、以及【點檢項目規格】維護（增修、排序、開關）。
+  * **ADMIN (系統管理員)**：具備全功能，且獨家掌管【站點規格與連假同步】與【人員名冊管理/密碼重設】。
+  * **密碼安全防護**：首次登入或密碼被重設後，系統強制要求修改為 6～8 碼之自訂新密碼，登入支援記住工號。
 
 ---
 
@@ -79,8 +81,11 @@
 * **模組 3：站點規格與連假中心 (`AdminStationsView`)**：
   * 管理各站點代碼、名稱、類型與上下排序。
   * 未來 3 個月國定連續假期自動檢查與一鍵確認寫入 Calendar 資料庫。
-* **模組 4：人員名冊與帳號權限 (`AdminUsersView`)**：
-  * 人員清冊管理、在職／離職狀態切換、一鍵重設密碼（下次強制改密）。
+* **模組 4：人員名冊與帳號權限 (`AdminUsersView` - 僅 ADMIN)**：
+  * 人員清冊管理，預設顯示全部人員 (`ALL`)，支援「全部 / 在職 / 離職留停」頁籤切換。
+  * **一階角色排序**：`ADMIN` ➜ `SUPERVISOR` ➜ `STAFF`（下拉選單與清冊完全同步）。
+  * **二階工號排序**：相同角色下，依工號由 B 到 A、數字由小到大（升冪）排列。
+  * 在職／離職狀態切換、一鍵重設密碼（下次強制改密）、站點授權分配。
 * **模組 5：商場巡檢總結報表 (`AdminReportsView`)**：
   * 產出符合商場 LINE 官方格式之巡檢進度總結文字報告，支援一鍵複製與即時導出。
 
@@ -155,7 +160,7 @@ npm run dev
 ```bash
 python full_smoke_test.py
 ```
-測試內容涵蓋 12 大生產級檢查項目（零帳密依賴、不干擾線上同仁）：
+測試內容涵蓋 14 大生產級檢查項目（零帳密依賴、不干擾線上同仁）：
 * **階段一：系統深層自檢 (Deep Health Probe)**
   1. 後端基礎連線探針 (Health Probe 狀態 UP)
   2. 資料庫 7 大表健全度自檢 (Users, Departments, User_Depts, Check_Items, Audit_Logs, Handover_Notes, Calendar)
@@ -170,6 +175,8 @@ python full_smoke_test.py
   10. 資安防線 3：未授權點檢提交阻斷
   11. 資安防線 4：非在職員工存取封鎖
   12. 資安防線 5：無效憑證與密碼安全防護
+  13. 資安防線 6：未授權存取行事曆阻斷 (Calendar Auth Guard)
+  14. 資安防線 7：未授權批次矩陣存取阻斷 (Batch Matrix RBAC Guard)
 
 ### 6. 測試沙盒資料物理清理工具 (Zero-Trace Cleanup)
 若在開發測試或試營運期間送出了測試資料，可透過以下指令進行物理銷毀：
